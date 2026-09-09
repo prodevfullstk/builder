@@ -26,7 +26,7 @@ const NodeboxPreview = dynamic(
 );
 
 export function PreviewPane() {
-  const { files, framework, status, setStatus, logs, clearLogs, addLog } = useProjectStore();
+  const { files, framework, status, setStatus, logs, clearLogs, addLog, updateLastMessageScreenshot } = useProjectStore();
   const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [showLogs, setShowLogs] = useState(false);
   const [previewKey, setPreviewKey] = useState(1);
@@ -200,6 +200,9 @@ export function PreviewPane() {
               backendUrl={backendUrl}
               onError={(err) => {
                 addLog(`[Preview Error] ${err}`);
+              }}
+              onScreenshot={(dataUrl) => {
+                updateLastMessageScreenshot(dataUrl);
               }}
             />
           ) : (

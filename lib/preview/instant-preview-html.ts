@@ -314,6 +314,21 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
           setTimeout(() => spinner.remove(), 200);
         }
 
+        // Auto-screenshot after React has painted
+        setTimeout(async () => {
+          try {
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+            document.head.appendChild(s);
+            await new Promise((resolve, reject) => { s.onload = resolve; s.onerror = reject; });
+            const canvas = await html2canvas(document.body, { useCORS: true, scale: 1, logging: false });
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            window.parent.postMessage({ type: 'preview-screenshot', dataUrl }, '*');
+          } catch (_e) {
+            // Screenshot failed silently — preview still works
+          }
+        }, 2500);
+
       } catch (err) {
         showError('Execution Error', err?.stack || String(err));
       }

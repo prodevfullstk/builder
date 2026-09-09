@@ -10,6 +10,7 @@ interface InstantPreviewProps {
   refreshNonce?: number;
   backendUrl?: string | null;
   onError?: (err: string) => void;
+  onScreenshot?: (dataUrl: string) => void;
 }
 
 export function InstantPreview({
@@ -18,17 +19,21 @@ export function InstantPreview({
   refreshNonce = 0,
   backendUrl = null,
   onError,
+  onScreenshot,
 }: InstantPreviewProps) {
-  // Listen to preview iframe runtime/compilation errors
+  // Listen to preview iframe runtime/compilation errors + screenshots
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'preview-error' && typeof event.data.error === 'string') {
         onError?.(event.data.error);
       }
+      if (event.data?.type === 'preview-screenshot' && typeof event.data.dataUrl === 'string') {
+        onScreenshot?.(event.data.dataUrl);
+      }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [onError]);
+  }, [onError, onScreenshot]);
   // 1. Babel HTML renders immediately (sync) - always reliable
   const babelHtml = useMemo(() => {
     if (!files || Object.keys(files).length === 0) return '';

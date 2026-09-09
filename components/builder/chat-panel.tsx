@@ -223,15 +223,35 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
             ) : (
               <div className="w-full">
                 {msg.steps && msg.steps.length > 0 ? (
-                  <V0Stepper
-                    steps={msg.steps}
-                    filesGenerated={msg.filesGenerated}
-                    showPreview={msg.showPreview}
-                    content={msg.content}
-                  />
+                  <>
+                    <V0Stepper
+                      steps={msg.steps}
+                      filesGenerated={msg.filesGenerated}
+                      showPreview={msg.showPreview}
+                      content={msg.content}
+                    />
+                    {msg.screenshot && (
+                      <div className="mt-2 rounded-xl overflow-hidden border border-zinc-800 shadow-lg">
+                        <div className="px-2.5 py-1.5 bg-zinc-900 border-b border-zinc-800 flex items-center gap-1.5 text-[10px] text-zinc-400">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                          <span>Preview snapshot</span>
+                        </div>
+                        <img
+                          src={msg.screenshot}
+                          alt="Preview snapshot"
+                          className="w-full block"
+                        />
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div className="w-full rounded-xl px-3.5 py-2.5 leading-relaxed bg-zinc-900/90 border border-zinc-800/80 text-zinc-300">
                     <p className="whitespace-pre-wrap">{msg.content}</p>
+                    {msg.screenshot && (
+                      <div className="mt-2 rounded-xl overflow-hidden border border-zinc-800">
+                        <img src={msg.screenshot} alt="Preview snapshot" className="w-full block" />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

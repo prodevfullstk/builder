@@ -12,6 +12,7 @@ export interface ChatMessage {
   steps?: TimelineStep[];
   filesGenerated?: string[];
   showPreview?: boolean;
+  screenshot?: string;
 }
 
 export interface TimelineStep {
@@ -60,6 +61,7 @@ export interface ProjectState {
   setMode: (mode: BuilderMode) => void;
   setStatus: (status: BuilderStatus, message?: string) => void;
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
+  updateLastMessageScreenshot: (screenshot: string) => void;
   addLog: (log: string) => void;
   clearLogs: () => void;
   resetProject: () => void;
@@ -150,6 +152,18 @@ export const useProjectStore = create<ProjectState>((set) => ({
         },
       ],
     })),
+
+  updateLastMessageScreenshot: (screenshot) =>
+    set((state) => {
+      const msgs = [...state.messages];
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === 'assistant') {
+          msgs[i] = { ...msgs[i], screenshot };
+          break;
+        }
+      }
+      return { messages: msgs };
+    }),
 
   addLog: (log) =>
     set((state) => ({
