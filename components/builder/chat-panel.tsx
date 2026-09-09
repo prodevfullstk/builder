@@ -99,10 +99,13 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         addLog(`[AI] Successfully parsed ${Object.keys(finalFiles).length} project files.`);
       }
 
-      // Add assistant response
+      // Add assistant response with detailed file list
+      const fileList = Object.keys(finalFiles);
       addMessage({
         role: 'assistant',
-        content: accumulatedText.slice(0, 300) + (accumulatedText.length > 300 ? '...\n\n✅ Files updated in editor and ready for preview.' : ''),
+        content: `✅ Generated **${fileList.length} project files**:\n` +
+          fileList.map((f) => `- \`${f}\``).join('\n') +
+          '\n\nAll components are now open in the editor and rendering in the preview pane.',
       });
 
       setStatus('ready', 'Application ready');

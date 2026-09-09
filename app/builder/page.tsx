@@ -71,9 +71,12 @@ function BuilderWorkspace() {
             addLog(`[AI] Generated ${Object.keys(finalFiles).length} project files.`);
           }
 
+          const fileList = Object.keys(finalFiles);
           addMessage({
             role: 'assistant',
-            content: '✅ Project successfully generated! You can preview it live on the right, or modify the code directly in the editor.',
+            content: `✅ Generated **${fileList.length} project files**:\n` +
+              fileList.map((f) => `- \`${f}\``).join('\n') +
+              '\n\nAll components are mounted in the editor and live in the preview pane!',
           });
 
           setStatus('ready', 'Project ready');
@@ -81,6 +84,10 @@ function BuilderWorkspace() {
           console.error('Initial generation failed:', err);
           setStatus('error', err?.message || 'Failed to generate');
           addLog(`[Error] ${err?.message || 'Initial generation failed'}`);
+          addMessage({
+            role: 'assistant',
+            content: `⚠️ Initial generation encountered an issue: ${err?.message || 'Connection error'}. You can re-submit your prompt below to regenerate.`,
+          });
         }
       };
 

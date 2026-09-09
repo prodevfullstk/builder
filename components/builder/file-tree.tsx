@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   FileCode,
   FileJson,
@@ -8,22 +8,70 @@ import {
   FilePlus,
   Trash2,
   FolderTree,
+  Folder,
+  FolderOpen,
+  ChevronRight,
+  ChevronDown,
 } from 'lucide-react';
 import { useProjectStore } from '@/lib/store/project-store';
+
+interface TreeNode {
+  name: string;
+  path: string;
+  isFolder: boolean;
+  children: Record<string, TreeNode>;
+}
 
 export function FileTree() {
   const { files, activeFile, setActiveFile, createFile, deleteFile } = useProjectStore();
   const [isCreating, setIsCreating] = useState(false);
   const [newFilePath, setNewFilePath] = useState('');
+  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
 
-  const sortedPaths = Object.keys(files).sort((a, b) => {
-    // Put root files last, folders first
-    const aIsRoot = !a.includes('/');
-    const bIsRoot = !b.includes('/');
-    if (aIsRoot && !bIsRoot) return 1;
-    if (!aIsRoot && bIsRoot) return -1;
-    return a.localeCompare(b);
-  });
+  const toggleFolder = (folderPath: string) => {
+    setCollapsedFolders((prev) => ({
+      ...prev,
+      [folderPath]: !prev[folderPath],
+    }));
+  };
+
+  // Build hierarchical folder tree structure
+  const tree = useMemo(() => {
+    const root: Record<string, TreeNode> = {};
+
+    for (const filePath of Object.keys(files)) {
+      const parts = filePath.split('/');
+      let currentLevel = root;
+      let currentPath = '';
+
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+        const isLast = i === parts.length - 1;
+
+        if (isLast) {
+          currentLevel[part] = {
+            name: part,
+            path: currentPath,
+            isFolder: false,
+            children: {},
+          };
+        } else {
+          if (!currentLevel[part]) {
+            currentLevel[part] = {
+              name: part,
+              path: currentPath,
+              isFolder: true,
+              children: {},
+            };
+          }
+          currentLevel = currentLevel[part].children;
+        }
+      }
+    }
+
+    return root;
+  }, [files]);
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,13 +98,90 @@ export function FileTree() {
     return <FileText className="w-3.5 h-3.5 text-zinc-400 shrink-0" />;
   };
 
+  const renderTree = (nodes: Record<string, TreeNode>, depth: number = 0) => {
+    const entries = Object.values(nodes).sort((a, b) => {
+      // Folders first, then files
+      if (a.isFolder && !b.isFolder) return -1;
+      if (!a.isFolder && b.isFolder) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    return entries.map((node) => {
+      const isCollapsed = !!collapsedFolders[node.path];
+      const indentClass = depth === 1 ? 'pl-5' : depth === 2 ? 'pl-8' : depth > 2 ? 'pl-11' : 'pl-3';
+
+      if (node.isFolder) {
+        const childCount = Object.keys(node.children).length;
+        return (
+          <div key={node.path} className="flex flex-col">
+            <button
+              onClick={() => toggleFolder(node.path)}
+              className={`flex items-center gap-1.5 py-1.5 pr-3 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60 transition-colors w-full text-left select-none text-[11px] font-medium ${indentClass}`}
+            >
+              {isCollapsed ? (
+                <ChevronRight className="w-3 h-3 text-zinc-500 shrink-0" />
+              ) : (
+                <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
+              )}
+              {isCollapsed ? (
+                <Folder className="w-3.5 h-3.5 text-amber-400/80 shrink-0" />
+              ) : (
+                <FolderOpen className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              )}
+              <span className="truncate">{node.name}</span>
+              <span className="ml-auto text-[10px] text-zinc-600">({childCount})</span>
+            </button>
+
+            {!isCollapsed && renderTree(node.children, depth + 1)}
+          </div>
+        );
+      }
+
+      const isActive = activeFile === node.path;
+      return (
+        <div
+          key={node.path}
+          onClick={() => setActiveFile(node.path)}
+          className={`group flex items-center justify-between py-1.5 pr-2.5 cursor-pointer transition-colors text-[11px] ${indentClass} ${
+            isActive
+              ? 'bg-blue-600/15 text-blue-400 font-medium border-l-2 border-blue-500'
+              : 'text-zinc-400 hover:bg-zinc-900/60 hover:text-zinc-200 border-l-2 border-transparent'
+          }`}
+        >
+          <div className="flex items-center gap-1.5 truncate">
+            {getFileIcon(node.path)}
+            <span className="truncate">{node.name}</span>
+          </div>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              deleteFile(node.path);
+            }}
+            className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-red-400 text-zinc-600 transition-opacity"
+            title="Delete file"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        </div>
+      );
+    });
+  };
+
+  const totalFiles = Object.keys(files).length;
+
   return (
-    <div className="w-56 h-full border-r border-zinc-800 bg-zinc-950 flex flex-col select-none text-xs shrink-0">
+    <div className="w-60 h-full border-r border-zinc-800 bg-zinc-950 flex flex-col select-none text-xs shrink-0">
       {/* Explorer Header */}
       <div className="h-9 px-3 border-b border-zinc-800 flex items-center justify-between text-zinc-400 font-semibold uppercase tracking-wider text-[10px]">
         <div className="flex items-center gap-1.5">
           <FolderTree className="w-3.5 h-3.5 text-zinc-400" />
           <span>Explorer</span>
+          {totalFiles > 0 && (
+            <span className="px-1.5 py-0.2 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-500 font-normal">
+              {totalFiles}
+            </span>
+          )}
         </div>
         <button
           onClick={() => setIsCreating(true)}
@@ -72,7 +197,7 @@ export function FileTree() {
         <form onSubmit={handleCreateSubmit} className="p-2 border-b border-zinc-800 bg-zinc-900/50">
           <input
             type="text"
-            placeholder="e.g. components/Button.tsx"
+            placeholder="e.g. components/Hero.tsx"
             value={newFilePath}
             onChange={(e) => setNewFilePath(e.target.value)}
             onBlur={() => {
@@ -84,53 +209,15 @@ export function FileTree() {
         </form>
       )}
 
-      {/* File List */}
+      {/* Hierarchical Folder Tree */}
       <div className="flex-1 overflow-y-auto py-1">
-        {sortedPaths.length === 0 ? (
+        {totalFiles === 0 ? (
           <div className="p-4 text-center text-zinc-600 text-xs italic">
             No files generated yet.
           </div>
         ) : (
-          sortedPaths.map((path) => {
-            const isActive = activeFile === path;
-            return (
-              <div
-                key={path}
-                onClick={() => setActiveFile(path)}
-                className={`group flex items-center justify-between px-3 py-1.5 cursor-pointer transition-colors ${
-                  isActive
-                    ? 'bg-zinc-800/80 text-blue-400 font-medium'
-                    : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
-                }`}
-              >
-                <div className="flex items-center gap-2 truncate min-w-0">
-                  {getFileIcon(path)}
-                  <span className="truncate">{path}</span>
-                </div>
-
-                {sortedPaths.length > 1 && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (confirm(`Delete ${path}?`)) {
-                        deleteFile(path);
-                      }
-                    }}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-zinc-800 hover:text-red-400 rounded text-zinc-500 transition-all"
-                    title="Delete File"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-            );
-          })
+          renderTree(tree)
         )}
-      </div>
-
-      {/* Footer info */}
-      <div className="px-3 py-2 border-t border-zinc-900 text-[10px] text-zinc-500 flex justify-between items-center">
-        <span>{sortedPaths.length} files</span>
       </div>
     </div>
   );
