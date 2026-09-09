@@ -44,71 +44,16 @@ export interface ProjectState {
 }
 
 const DEFAULT_NEXTJS_FILES: Record<string, string> = {
-  'package.json': JSON.stringify(
-    {
-      name: 'opendork-app',
-      version: '0.1.0',
-      private: true,
-      scripts: {
-        dev: 'next dev --port 3000 --hostname 0.0.0.0',
-        build: 'next build',
-        start: 'next start',
-      },
-      dependencies: {
-        next: '^14.2.0',
-        react: '^18.3.0',
-        'react-dom': '^18.3.0',
-        'lucide-react': '^0.454.0',
-        clsx: '^2.1.1',
-        'tailwind-merge': '^2.5.0',
-      },
-    },
-    null,
-    2
-  ),
-  'app/layout.tsx': `export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <html lang="en" className="dark">
-      <body style={{ margin: 0, padding: 0, backgroundColor: '#09090b', color: '#f4f4f5', fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
-        {children}
-      </body>
-    </html>
-  );
-}`,
   'app/page.tsx': `'use client';
-
-import React, { useState } from 'react';
-
+import React from 'react';
 export default function Home() {
-  const [count, setCount] = useState(0);
-
   return (
-    <main style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem', textAlign: 'center' }}>
-      <div style={{ maxWidth: '600px', backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '16px', padding: '2.5rem', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}>
-        <div style={{ display: 'inline-block', padding: '6px 14px', borderRadius: '9999px', backgroundColor: '#2563eb20', color: '#60a5fa', fontSize: '13px', fontWeight: 600, marginBottom: '1.5rem', border: '1px solid #2563eb40' }}>
-          ⚡ Opendork Live Preview
-        </div>
-        
-        <h1 style={{ fontSize: '2.25rem', fontWeight: 800, margin: '0 0 1rem 0', background: 'linear-gradient(to right, #60a5fa, #a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-          Ready to Build
-        </h1>
-        
-        <p style={{ color: '#a1a1aa', fontSize: '15px', lineHeight: 1.6, margin: '0 0 2rem 0' }}>
-          Describe what you want to build in the prompt panel on the left, or customize the code in the editor!
-        </p>
-
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', alignItems: 'center' }}>
-          <button
-            onClick={() => setCount((prev) => prev + 1)}
-            style={{ padding: '10px 20px', borderRadius: '8px', backgroundColor: '#2563eb', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
-          >
-            Interactive Button: {count}
-          </button>
-        </div>
+    <main style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#09090b', color: '#f4f4f5', fontFamily: 'system-ui, sans-serif' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚡</div>
+        <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#a1a1aa', fontWeight: 400 }}>
+          Describe your app in the chat to get started
+        </h2>
       </div>
     </main>
   );

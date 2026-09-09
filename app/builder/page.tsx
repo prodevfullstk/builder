@@ -36,7 +36,7 @@ function BuilderWorkspace() {
               prompt: initialPrompt,
               framework,
               history: [],
-              currentFiles: files,
+              currentFiles: {}, // empty → AI creates fresh project from scratch
             }),
           });
 
