@@ -43,6 +43,13 @@ export function V0Stepper({
     }
   }, [files]);
 
+  // Separate preliminary steps from file build steps
+  const preliminarySteps = steps.filter(
+    (s) => s.type === 'thought' || s.type === 'inspect' || s.type === 'design'
+  );
+  const fileSteps = steps.filter((s) => s.type === 'file');
+  const previewSteps = steps.filter((s) => s.type === 'preview');
+
   const getStepIcon = (type: TimelineStep['type'], status: TimelineStep['status']) => {
     if (status === 'running') {
       return <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin shrink-0" />;
@@ -63,82 +70,112 @@ export function V0Stepper({
   };
 
   return (
-    <div className="space-y-3 text-xs">
-      {/* Stepper Timeline Container */}
-      <div className="bg-zinc-950/70 border border-zinc-800/80 rounded-xl overflow-hidden backdrop-blur-sm">
-        {/* Toggle Header */}
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="w-full px-3 py-2 flex items-center justify-between text-zinc-400 hover:text-zinc-200 transition-colors bg-zinc-900/40 border-b border-zinc-800/40"
-        >
-          <div className="flex items-center gap-2 font-medium text-[11px]">
-            {isStreaming ? (
-              <span className="flex items-center gap-1.5 text-blue-400">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Building website...</span>
+    <div className="space-y-2.5 text-xs">
+      {/* 1. Preliminary Thinking & Design Steps (Standalone outside card, like v0) */}
+      {preliminarySteps.length > 0 && (
+        <div className="space-y-1.5 px-0.5 pt-0.5">
+          {preliminarySteps.map((step) => (
+            <div
+              key={step.id}
+              className="flex items-center justify-between text-zinc-400 text-[11px] py-0.5"
+            >
+              <div className="flex items-center gap-2">
+                {getStepIcon(step.type, step.status)}
+                <span className="font-sans text-zinc-300">{step.label}</span>
+              </div>
+              {step.duration && (
+                <span className="text-[10px] text-zinc-500 font-mono">{step.duration}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 2. File Generation Card (Only files appear inside this card) */}
+      {(fileSteps.length > 0 || isStreaming) && (
+        <div className="bg-zinc-950/70 border border-zinc-800/80 rounded-xl overflow-hidden backdrop-blur-sm shadow-sm">
+          {/* Toggle Header */}
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="w-full px-3 py-2 flex items-center justify-between text-zinc-400 hover:text-zinc-200 transition-colors bg-zinc-900/40 border-b border-zinc-800/40"
+          >
+            <div className="flex items-center gap-2 font-medium text-[11px]">
+              {isStreaming ? (
+                <span className="flex items-center gap-1.5 text-blue-400">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Writing project files...</span>
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-emerald-400">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Finished building</span>
+                </span>
+              )}
+              <span className="text-zinc-600">•</span>
+              <span className="text-zinc-500 font-normal">
+                {fileSteps.length} file{fileSteps.length === 1 ? '' : 's'}
               </span>
+            </div>
+
+            {isExpanded ? (
+              <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
             ) : (
-              <span className="flex items-center gap-1.5 text-emerald-400">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Finished building</span>
-              </span>
+              <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
             )}
-            <span className="text-zinc-600">•</span>
-            <span className="text-zinc-500 font-normal">
-              {steps.length} step{steps.length === 1 ? '' : 's'}
-            </span>
-          </div>
+          </button>
 
-          {isExpanded ? (
-            <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
-          ) : (
-            <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
-          )}
-        </button>
+          {/* Files List Inside Card */}
+          {isExpanded && (
+            <div className="p-2 space-y-1">
+              {fileSteps.map((step) => {
+                const isRunning = step.status === 'running';
+                return (
+                  <div
+                    key={step.id}
+                    onClick={() => {
+                      if (step.file) setActiveFile(step.file);
+                    }}
+                    className={`flex items-center justify-between px-2 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                      isRunning
+                        ? 'bg-blue-500/10 border border-blue-500/20 text-blue-300'
+                        : 'text-zinc-300 hover:bg-zinc-900/80'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      {getStepIcon(step.type, step.status)}
+                      <span className="font-mono text-[11px] truncate">{step.label}</span>
+                    </div>
 
-        {/* Steps List */}
-        {isExpanded && (
-          <div className="p-2.5 space-y-1.5">
-            {steps.map((step) => {
-              const isRunning = step.status === 'running';
-              return (
-                <div
-                  key={step.id}
-                  onClick={() => {
-                    if (step.file) setActiveFile(step.file);
-                  }}
-                  className={`flex items-center justify-between px-2 py-1.5 rounded-lg transition-colors ${
-                    step.file ? 'cursor-pointer hover:bg-zinc-900/80' : ''
-                  } ${isRunning ? 'bg-blue-500/10 border border-blue-500/20 text-blue-300' : 'text-zinc-300'}`}
-                >
-                  <div className="flex items-center gap-2 truncate">
-                    {getStepIcon(step.type, step.status)}
-                    <span className="font-mono text-[11px] truncate">{step.label}</span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0 text-[10px]">
-                    {step.linesAdded !== undefined && (
-                      <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
-                        +{step.linesAdded}
-                      </span>
-                    )}
-                    {step.duration && (
-                      <span className="text-zinc-500 font-mono">{step.duration}</span>
-                    )}
-                    {step.file && (
+                    <div className="flex items-center gap-1.5 shrink-0 text-[10px]">
+                      {step.linesAdded !== undefined && (
+                        <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                          +{step.linesAdded}
+                        </span>
+                      )}
                       <span className="text-[10px] text-zinc-500 font-mono px-1 rounded bg-zinc-800/60">
                         v1
                       </span>
-                    )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* Inline Miniature Preview Card (v0-style) */}
+      {/* 3. Checked Preview Step (Outside card, like v0) */}
+      {previewSteps.map((step) => (
+        <div
+          key={step.id}
+          className="flex items-center gap-2 text-zinc-300 text-[11px] px-0.5 py-0.5 font-sans"
+        >
+          <Monitor className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+          <span>{step.label}</span>
+        </div>
+      ))}
+
+      {/* 4. Inline Miniature Preview Card (v0-style) */}
       {showPreview && !isStreaming && previewHtml && (
         <div className="rounded-xl border border-zinc-800 overflow-hidden bg-zinc-950 shadow-lg group">
           {/* Card Header Bar */}
@@ -178,9 +215,9 @@ export function V0Stepper({
         </div>
       )}
 
-      {/* Summary Description */}
+      {/* 5. Summary Description */}
       {content && (
-        <div className="text-zinc-300 leading-relaxed text-xs">
+        <div className="text-zinc-300 leading-relaxed text-xs pt-1">
           <p className="whitespace-pre-wrap">{content}</p>
         </div>
       )}
