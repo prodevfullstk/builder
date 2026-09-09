@@ -12,11 +12,30 @@ export interface StreamGenerationOptions {
   currentFiles?: Record<string, string>;
 }
 
+// Updated model list — gemini-2.0-flash and older are no longer available
 const CANDIDATE_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
+  'gemini-flash-latest',
+  'gemini-3.5-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-3.6-flash',
+  'gemini-3.7-flash',
 ];
+
+/** Retry fetch up to maxRetries times on 503 (high demand) errors */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries = 3,
+  delayMs = 1200
+): Promise<Response> {
+  let lastRes: Response | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    lastRes = await fetch(url, options);
+    if (lastRes.status !== 503 || attempt === maxRetries) return lastRes;
+    await new Promise((r) => setTimeout(r, delayMs * (attempt + 1)));
+  }
+  return lastRes!;
+}
 
 export async function createGeminiStream({
   prompt,
@@ -53,10 +72,10 @@ export async function createGeminiStream({
   let response: Response | null = null;
   let lastError = '';
 
-  // Try candidate models in order for maximum reliability
+  // Try candidate models in order; fetchWithRetry handles 503 (high demand) automatically
   for (const model of CANDIDATE_MODELS) {
     try {
-      const res = await fetch(endpoint, {
+      const res = await fetchWithRetry(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -71,21 +90,22 @@ export async function createGeminiStream({
       });
 
       if (res.ok && res.body) {
+        console.log(`[AI Stream] ✅ Using model: ${model}`);
         response = res;
         break;
       } else {
         const errText = await res.text().catch(() => '');
-        lastError = `Model ${model} returned (${res.status}): ${errText}`;
-        console.warn(`[AI Stream] ${lastError}, attempting next model...`);
+        lastError = `Model ${model} (${res.status}): ${errText.slice(0, 200)}`;
+        console.warn(`[AI Stream] ⚠️ ${lastError} — trying next model...`);
       }
     } catch (err: any) {
       lastError = `Model ${model} fetch failed: ${err?.message || err}`;
-      console.warn(`[AI Stream] ${lastError}`);
+      console.warn(`[AI Stream] ⚠️ ${lastError}`);
     }
   }
 
   if (!response || !response.body) {
-    throw new Error(`Failed to initialize AI stream. Last error: ${lastError}`);
+    throw new Error(`All AI models unavailable. Last error: ${lastError}`);
   }
 
   const encoder = new TextEncoder();
