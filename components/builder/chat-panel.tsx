@@ -4,8 +4,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Send,
   Sparkles,
-  Bot,
-  User,
   Loader2,
   Lightbulb,
 } from 'lucide-react';
@@ -214,38 +212,28 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex gap-2.5 text-xs ${
-              msg.role === 'user' ? 'justify-end' : 'justify-start'
+            className={`flex text-xs ${
+              msg.role === 'user' ? 'justify-end' : 'justify-start w-full'
             }`}
           >
-            {msg.role === 'assistant' && (
-              <div className="w-6 h-6 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center shrink-0 mt-0.5">
-                <Bot className="w-3.5 h-3.5 text-blue-400" />
-              </div>
-            )}
-
-            <div
-              className={`max-w-[90%] rounded-xl px-3 py-2 leading-relaxed ${
-                msg.role === 'user'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'bg-zinc-900/90 border border-zinc-800 text-zinc-300'
-              }`}
-            >
-              {msg.role === 'assistant' && msg.steps && msg.steps.length > 0 ? (
-                <V0Stepper
-                  steps={msg.steps}
-                  filesGenerated={msg.filesGenerated}
-                  showPreview={msg.showPreview}
-                  content={msg.content}
-                />
-              ) : (
+            {msg.role === 'user' ? (
+              <div className="max-w-[85%] rounded-2xl px-3.5 py-2 leading-relaxed bg-blue-600 text-white shadow-sm">
                 <p className="whitespace-pre-wrap">{msg.content}</p>
-              )}
-            </div>
-
-            {msg.role === 'user' && (
-              <div className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center shrink-0 mt-0.5">
-                <User className="w-3.5 h-3.5 text-zinc-400" />
+              </div>
+            ) : (
+              <div className="w-full">
+                {msg.steps && msg.steps.length > 0 ? (
+                  <V0Stepper
+                    steps={msg.steps}
+                    filesGenerated={msg.filesGenerated}
+                    showPreview={msg.showPreview}
+                    content={msg.content}
+                  />
+                ) : (
+                  <div className="w-full rounded-xl px-3.5 py-2.5 leading-relaxed bg-zinc-900/90 border border-zinc-800/80 text-zinc-300">
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -253,13 +241,8 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
 
         {/* Live Stepper when AI is actively generating */}
         {status === 'generating' && (
-          <div className="flex gap-2.5 text-xs justify-start">
-            <div className="w-6 h-6 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center shrink-0 mt-0.5">
-              <Bot className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
-            </div>
-            <div className="max-w-[90%] w-full">
-              <V0Stepper steps={activeSteps} isStreaming={true} showPreview={false} />
-            </div>
+          <div className="w-full text-xs">
+            <V0Stepper steps={activeSteps} isStreaming={true} showPreview={false} />
           </div>
         )}
 
