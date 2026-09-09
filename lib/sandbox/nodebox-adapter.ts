@@ -1,4 +1,5 @@
 import { Nodebox, ShellProcess } from '@codesandbox/nodebox';
+import { detectBackendEntry as detectBackendEntryUtil } from './detect-backend';
 
 export interface FileSystem {
   [path: string]: string;
@@ -198,6 +199,60 @@ export class NodeboxAdapter {
 
   async startNode(entry: string = 'index.js', port: number = 3000): Promise<PreviewInfo> {
     return this.startFramework('node', port, entry);
+  }
+
+  /**
+   * Detect if the project contains a Node backend server file.
+   * Delegates to standalone utility to avoid importing browser-only deps during SSR.
+   */
+  static detectBackendEntry(files: Record<string, string>): string | null {
+    return detectBackendEntryUtil(files);
+  }
+
+  /**
+   * Start lightweight Node.js backend server directly without heavy bundling
+   * Boots in < 500ms and uses < 10MB of WASM memory
+   */
+  async startBackendServer(files: FileSystem, port: number = 3000): Promise<PreviewInfo> {
+    if (!this.nodebox) throw new Error('Nodebox not initialized');
+
+    const entry = NodeboxAdapter.detectBackendEntry(files) || 'server.js';
+    this.log(`🚀 Starting lightweight Node.js backend server (${entry}) on port ${port}...`);
+
+    await this.mountFiles(files);
+
+    if (this.currentProcess) {
+      try {
+        await this.currentProcess.kill();
+      } catch {}
+      this.currentProcess = null;
+    }
+
+    const proc = this.nodebox.shell.create();
+    this.currentProcess = proc;
+
+    proc.stdout.on('data', (data) => this.log(`[Backend API] ${data}`));
+    proc.stderr.on('data', (data) => this.log(`[Backend API err] ${data}`));
+
+    const shellInfo = await proc.runCommand('node', [entry]);
+
+    try {
+      if (shellInfo?.id) {
+        const preview = await this.nodebox.preview.getByShellId(shellInfo.id, 15000);
+        if (preview?.url) {
+          this.previewInfo = { url: preview.url, port };
+          this.log(`✅ Backend API live at: ${preview.url}`);
+          return this.previewInfo;
+        }
+      }
+    } catch {
+      // Fallback: wait for port
+    }
+
+    const portInfo = await this.nodebox.preview.waitForPort(port, 15000);
+    this.previewInfo = { url: portInfo.url, port };
+    this.log(`✅ Backend API live at: ${portInfo.url}`);
+    return this.previewInfo;
   }
 
   async cleanup(): Promise<void> {

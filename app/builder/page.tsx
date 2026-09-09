@@ -1,5 +1,8 @@
 'use client';
 
+// Force dynamic rendering — builder uses browser-only APIs (cuid, Nodebox, esbuild-wasm)
+export const dynamic = 'force-dynamic';
+
 import React, { useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useProjectStore } from '@/lib/store/project-store';

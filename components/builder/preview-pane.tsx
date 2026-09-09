@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import {
   RotateCcw,
@@ -13,9 +13,11 @@ import {
   ChevronDown,
   Zap,
   Box,
+  Server,
 } from 'lucide-react';
 import { useProjectStore } from '@/lib/store/project-store';
 import { InstantPreview } from '@/components/preview/instant-preview';
+import { detectBackendEntry } from '@/lib/sandbox/detect-backend';
 
 // Dynamically import NodeboxPreview with ssr: false
 const NodeboxPreview = dynamic(
@@ -29,7 +31,13 @@ export function PreviewPane() {
   const [showLogs, setShowLogs] = useState(false);
   const [previewKey, setPreviewKey] = useState(1);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [backendUrl, setBackendUrl] = useState<string | null>(null);
   const [engine, setEngine] = useState<'instant' | 'nodebox'>('instant');
+
+  // Detect if project has a backend server.js file
+  const hasBackend = useMemo(() => {
+    return detectBackendEntry(files) !== null;
+  }, [files]);
 
   const getViewportWidth = () => {
     switch (viewport) {
@@ -129,6 +137,15 @@ export function PreviewPane() {
         <div className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-zinc-950 border border-zinc-800/80 text-[11px] text-zinc-400 font-mono">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
           <span>{engine === 'instant' ? 'preview.local' : 'localhost:3000'}</span>
+          {hasBackend && engine === 'instant' && (
+            <span
+              className="ml-1 flex items-center gap-0.5 text-emerald-400/80"
+              title="Backend API auto-detected and bridged via Nodebox"
+            >
+              <Server className="w-2.5 h-2.5" />
+              <span className="text-[10px]">+API</span>
+            </span>
+          )}
         </div>
 
         {/* Right: Actions */}
@@ -180,6 +197,7 @@ export function PreviewPane() {
               key={previewKey}
               files={files}
               refreshNonce={previewKey}
+              backendUrl={backendUrl}
             />
           ) : (
             <NodeboxPreview
@@ -200,6 +218,11 @@ export function PreviewPane() {
               }}
               onReady={(url) => {
                 setPreviewUrl(url);
+                // Expose backend URL for API proxy bridge when switching back to instant mode
+                if (hasBackend) {
+                  setBackendUrl(url);
+                  addLog(`[Backend API] Bridge URL captured: ${url}`);
+                }
                 addLog(`[Nodebox Ready] Serving at ${url}`);
               }}
             />
