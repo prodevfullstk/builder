@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { createGeminiStream } from '@/lib/ai/gemini-stream';
 
+export const runtime = 'edge';
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
