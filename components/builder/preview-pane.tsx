@@ -11,8 +11,11 @@ import {
   Terminal,
   ChevronUp,
   ChevronDown,
+  Zap,
+  Box,
 } from 'lucide-react';
 import { useProjectStore } from '@/lib/store/project-store';
+import { InstantPreview } from '@/components/preview/instant-preview';
 
 // Dynamically import NodeboxPreview with ssr: false
 const NodeboxPreview = dynamic(
@@ -26,6 +29,7 @@ export function PreviewPane() {
   const [showLogs, setShowLogs] = useState(false);
   const [previewKey, setPreviewKey] = useState(1);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [engine, setEngine] = useState<'instant' | 'nodebox'>('instant');
 
   const getViewportWidth = () => {
     switch (viewport) {
@@ -40,7 +44,7 @@ export function PreviewPane() {
 
   const handleRefresh = () => {
     setPreviewKey((prev) => prev + 1);
-    addLog('[Preview] Refreshing preview instance...');
+    addLog(`[Preview] Reloading preview (${engine} engine)...`);
   };
 
   const handleOpenExternal = () => {
@@ -53,64 +57,97 @@ export function PreviewPane() {
     <div className="flex-1 h-full flex flex-col bg-zinc-950 overflow-hidden select-none border-l border-zinc-800">
       {/* Preview Header & Controls */}
       <div className="h-9 px-3 border-b border-zinc-800 bg-zinc-900/80 flex items-center justify-between">
-        {/* Left: Viewport Toggles */}
-        <div className="flex items-center gap-1 bg-zinc-950 p-0.5 rounded-md border border-zinc-800">
-          <button
-            onClick={() => setViewport('desktop')}
-            className={`p-1 rounded text-xs transition-colors ${
-              viewport === 'desktop'
-                ? 'bg-zinc-800 text-zinc-100'
-                : 'text-zinc-500 hover:text-zinc-300'
-            }`}
-            title="Desktop View (100%)"
-          >
-            <Monitor className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => setViewport('tablet')}
-            className={`p-1 rounded text-xs transition-colors ${
-              viewport === 'tablet'
-                ? 'bg-zinc-800 text-zinc-100'
-                : 'text-zinc-500 hover:text-zinc-300'
-            }`}
-            title="Tablet View (768px)"
-          >
-            <Tablet className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => setViewport('mobile')}
-            className={`p-1 rounded text-xs transition-colors ${
-              viewport === 'mobile'
-                ? 'bg-zinc-800 text-zinc-100'
-                : 'text-zinc-500 hover:text-zinc-300'
-            }`}
-            title="Mobile View (375px)"
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-          </button>
+        {/* Left: Viewport Toggles & Engine Switcher */}
+        <div className="flex items-center gap-2">
+          {/* Viewport controls */}
+          <div className="flex items-center gap-1 bg-zinc-950 p-0.5 rounded-md border border-zinc-800">
+            <button
+              onClick={() => setViewport('desktop')}
+              className={`p-1 rounded text-xs transition-colors ${
+                viewport === 'desktop'
+                  ? 'bg-zinc-800 text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+              title="Desktop View (100%)"
+            >
+              <Monitor className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setViewport('tablet')}
+              className={`p-1 rounded text-xs transition-colors ${
+                viewport === 'tablet'
+                  ? 'bg-zinc-800 text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+              title="Tablet View (768px)"
+            >
+              <Tablet className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setViewport('mobile')}
+              className={`p-1 rounded text-xs transition-colors ${
+                viewport === 'mobile'
+                  ? 'bg-zinc-800 text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+              title="Mobile View (375px)"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Dual Engine Switcher */}
+          <div className="flex items-center gap-0.5 bg-zinc-950 p-0.5 rounded-md border border-zinc-800 text-[11px]">
+            <button
+              onClick={() => setEngine('instant')}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded transition-colors ${
+                engine === 'instant'
+                  ? 'bg-blue-600 text-white font-medium shadow-xs'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              title="Instant Preview (< 500ms in-browser compilation)"
+            >
+              <Zap className="w-3 h-3 text-amber-300" />
+              <span>Instant</span>
+            </button>
+            <button
+              onClick={() => setEngine('nodebox')}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded transition-colors ${
+                engine === 'nodebox'
+                  ? 'bg-zinc-800 text-zinc-100 font-medium'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+              title="Nodebox: In-browser Node.js runtime"
+            >
+              <Box className="w-3 h-3" />
+              <span>Nodebox</span>
+            </button>
+          </div>
         </div>
 
         {/* Center: URL Bar Mockup */}
         <div className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-zinc-950 border border-zinc-800/80 text-[11px] text-zinc-400 font-mono">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-          <span>localhost:3000</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
+          <span>{engine === 'instant' ? 'preview.local' : 'localhost:3000'}</span>
         </div>
 
         {/* Right: Actions */}
         <div className="flex items-center gap-1">
-          <button
-            onClick={() => setShowLogs(!showLogs)}
-            className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] transition-colors ${
-              showLogs
-                ? 'bg-zinc-800 text-blue-400 font-medium'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-            }`}
-            title="Toggle Runtime Logs"
-          >
-            <Terminal className="w-3 h-3" />
-            <span>Logs</span>
-            {showLogs ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
-          </button>
+          {engine === 'nodebox' && (
+            <button
+              onClick={() => setShowLogs(!showLogs)}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] transition-colors ${
+                showLogs
+                  ? 'bg-zinc-800 text-blue-400 font-medium'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+              }`}
+              title="Toggle Runtime Logs"
+            >
+              <Terminal className="w-3 h-3" />
+              <span>Logs</span>
+              {showLogs ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+            </button>
+          )}
 
           <button
             onClick={handleRefresh}
@@ -120,7 +157,7 @@ export function PreviewPane() {
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
 
-          {previewUrl && (
+          {previewUrl && engine === 'nodebox' && (
             <button
               onClick={handleOpenExternal}
               className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
@@ -138,27 +175,35 @@ export function PreviewPane() {
           style={{ width: getViewportWidth() }}
           className="h-full bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl overflow-hidden transition-all duration-300 flex flex-col"
         >
-          <NodeboxPreview
-            key={previewKey}
-            files={files}
-            framework={framework}
-            onStatusChange={(newStatus) => {
-              if (newStatus === 'ready') {
-                setStatus('ready', 'Preview ready');
-              } else if (newStatus === 'error') {
-                setStatus('error', 'Runtime error occurred');
-              } else {
-                setStatus('starting', `${newStatus}...`);
-              }
-            }}
-            onError={(err) => {
-              addLog(`[Nodebox Error] ${err}`);
-            }}
-            onReady={(url) => {
-              setPreviewUrl(url);
-              addLog(`[Nodebox Ready] Serving at ${url}`);
-            }}
-          />
+          {engine === 'instant' ? (
+            <InstantPreview
+              key={previewKey}
+              files={files}
+              refreshNonce={previewKey}
+            />
+          ) : (
+            <NodeboxPreview
+              key={previewKey}
+              files={files}
+              framework={framework}
+              onStatusChange={(newStatus) => {
+                if (newStatus === 'ready') {
+                  setStatus('ready', 'Preview ready');
+                } else if (newStatus === 'error') {
+                  setStatus('error', 'Runtime error occurred');
+                } else {
+                  setStatus('starting', `${newStatus}...`);
+                }
+              }}
+              onError={(err) => {
+                addLog(`[Nodebox Error] ${err}`);
+              }}
+              onReady={(url) => {
+                setPreviewUrl(url);
+                addLog(`[Nodebox Ready] Serving at ${url}`);
+              }}
+            />
+          )}
         </div>
       </div>
 

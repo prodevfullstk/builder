@@ -12,6 +12,12 @@ export interface StreamGenerationOptions {
   currentFiles?: Record<string, string>;
 }
 
+const CANDIDATE_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+];
+
 export async function createGeminiStream({
   prompt,
   framework = 'nextjs',
@@ -20,7 +26,7 @@ export async function createGeminiStream({
 }: StreamGenerationOptions): Promise<ReadableStream<Uint8Array>> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is not configured in environment variables');
+    throw new Error('GEMINI_API_KEY is not configured in Vercel environment variables');
   }
 
   const apiUrl = process.env.GEMINI_API_URL || 'https://generativelanguage.googleapis.com/v1beta/openai';
@@ -28,43 +34,58 @@ export async function createGeminiStream({
 
   const systemPrompt = getSystemPrompt(framework);
 
-  // If there are existing files, provide a summary of current project state for follow-up edits
+  // If there are existing files, provide concise summary of project structure
   let userContent = prompt;
   if (Object.keys(currentFiles).length > 0) {
     const fileSummary = Object.entries(currentFiles)
-      .slice(0, 10)
-      .map(([path, content]) => `\`\`\`${path}\n${content.slice(0, 1500)}\n\`\`\``)
+      .slice(0, 8)
+      .map(([path, content]) => `\`\`\`${path}\n${content.slice(0, 1000)}\n\`\`\``)
       .join('\n\n');
-    userContent = `CURRENT PROJECT FILES:\n${fileSummary}\n\nUSER REQUEST:\n${prompt}\n\nPlease output the updated complete files.`;
+    userContent = `CURRENT PROJECT FILES:\n${fileSummary}\n\nUSER REQUEST:\n${prompt}\n\nPlease output the updated complete files using \`\`\`filename=... format.`;
   }
 
   const messages: ChatMessagePayload[] = [
     { role: 'system', content: systemPrompt },
-    ...history.slice(-6), // keep last 6 conversational messages for context
+    ...history.slice(-4),
     { role: 'user', content: userContent },
   ];
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gemini-3.6-flash',
-      messages,
-      temperature: 0.2,
-      stream: true,
-    }),
-  });
+  let response: Response | null = null;
+  let lastError = '';
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Gemini API error (${response.status}): ${errorText}`);
+  // Try candidate models in order for maximum reliability
+  for (const model of CANDIDATE_MODELS) {
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature: 0.3,
+          stream: true,
+        }),
+      });
+
+      if (res.ok && res.body) {
+        response = res;
+        break;
+      } else {
+        const errText = await res.text().catch(() => '');
+        lastError = `Model ${model} returned (${res.status}): ${errText}`;
+        console.warn(`[AI Stream] ${lastError}, attempting next model...`);
+      }
+    } catch (err: any) {
+      lastError = `Model ${model} fetch failed: ${err?.message || err}`;
+      console.warn(`[AI Stream] ${lastError}`);
+    }
   }
 
-  if (!response.body) {
-    throw new Error('Response body is null');
+  if (!response || !response.body) {
+    throw new Error(`Failed to initialize AI stream. Last error: ${lastError}`);
   }
 
   const encoder = new TextEncoder();
@@ -73,7 +94,7 @@ export async function createGeminiStream({
   // Create a transform stream to parse SSE and pipe plain text chunks to client
   return new ReadableStream({
     async start(controller) {
-      const reader = response.body!.getReader();
+      const reader = response!.body!.getReader();
       let buffer = '';
 
       try {
@@ -96,15 +117,25 @@ export async function createGeminiStream({
                   controller.enqueue(encoder.encode(content));
                 }
               } catch {
-                // Partial JSON chunk, ignore
+                // Partial JSON chunk, skip
               }
             }
           }
         }
+
+        if (buffer.trim().startsWith('data: ') && buffer.trim() !== 'data: [DONE]') {
+          try {
+            const json = JSON.parse(buffer.trim().slice(6));
+            const content = json.choices?.[0]?.delta?.content;
+            if (content) {
+              controller.enqueue(encoder.encode(content));
+            }
+          } catch {}
+        }
+
+        controller.close();
       } catch (err) {
         controller.error(err);
-      } finally {
-        controller.close();
       }
     },
   });

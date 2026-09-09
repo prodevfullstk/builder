@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { createGeminiStream } from '@/lib/ai/gemini-stream';
 
-export const runtime = 'edge';
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,6 +29,7 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'no-cache, no-transform',
         'X-Content-Type-Options': 'nosniff',
+        'Connection': 'keep-alive',
       },
     });
   } catch (error: any) {
