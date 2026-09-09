@@ -125,33 +125,43 @@ export function CodeEditor() {
 
       {/* Editor Body */}
       <div className="flex-1 w-full relative">
-        <MonacoErrorBoundary fallbackFile={activeFile}>
-          <Editor
-            path={activeFile}
-            height="100%"
-            language={getLanguageFromPath(activeFile)}
-            value={currentContent}
-            theme="vs-dark"
-            onChange={(val: string | undefined) => {
-              if (activeFile && val !== undefined) {
-                updateFile(activeFile, val);
-              }
-            }}
-            onMount={handleEditorMount}
-            options={{
-              minimap: { enabled: false },
-              fontSize: 13,
-              fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-              tabSize: 2,
-              wordWrap: 'on',
-              scrollBeyondLastLine: false,
-              automaticLayout: false,
-              padding: { top: 12, bottom: 12 },
-              lineNumbers: 'on',
-              renderLineHighlight: 'all',
-            }}
-          />
-        </MonacoErrorBoundary>
+        {!activeFile || !currentContent ? (
+          <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-zinc-950 text-zinc-500 font-mono text-xs select-none">
+            <FileCode className="w-10 h-10 text-zinc-700 mb-3" />
+            <p className="text-zinc-300 font-semibold mb-1 text-sm">No File Open</p>
+            <p className="text-zinc-600 max-w-xs">
+              Enter a prompt in the chat panel to generate your fullstack website
+            </p>
+          </div>
+        ) : (
+          <MonacoErrorBoundary fallbackFile={activeFile}>
+            <Editor
+              path={activeFile}
+              height="100%"
+              language={getLanguageFromPath(activeFile)}
+              value={currentContent}
+              theme="vs-dark"
+              onChange={(val: string | undefined) => {
+                if (activeFile && val !== undefined) {
+                  updateFile(activeFile, val);
+                }
+              }}
+              onMount={handleEditorMount}
+              options={{
+                minimap: { enabled: false },
+                fontSize: 13,
+                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                tabSize: 2,
+                wordWrap: 'on',
+                scrollBeyondLastLine: false,
+                automaticLayout: false,
+                padding: { top: 12, bottom: 12 },
+                lineNumbers: 'on',
+                renderLineHighlight: 'all',
+              }}
+            />
+          </MonacoErrorBoundary>
+        )}
       </div>
     </div>
   );

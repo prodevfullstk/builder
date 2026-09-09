@@ -43,26 +43,9 @@ export interface ProjectState {
   resetProject: () => void;
 }
 
-const DEFAULT_NEXTJS_FILES: Record<string, string> = {
-  'app/page.tsx': `'use client';
-import React from 'react';
-export default function Home() {
-  return (
-    <main style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#09090b', color: '#f4f4f5', fontFamily: 'system-ui, sans-serif' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚡</div>
-        <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#a1a1aa', fontWeight: 400 }}>
-          Describe your app in the chat to get started
-        </h2>
-      </div>
-    </main>
-  );
-}`,
-};
-
 export const useProjectStore = create<ProjectState>((set) => ({
-  files: DEFAULT_NEXTJS_FILES,
-  activeFile: 'app/page.tsx',
+  files: {},
+  activeFile: '',
   framework: 'nextjs',
   mode: 'split',
   status: 'idle',
@@ -75,7 +58,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
       timestamp: Date.now(),
     },
   ],
-  logs: ['[System] Workspace initialized. Ready to generate.'],
+  logs: ['[System] Workspace ready.'],
 
   setFiles: (files) => set({ files }),
 
@@ -137,11 +120,11 @@ export const useProjectStore = create<ProjectState>((set) => ({
 
   resetProject: () =>
     set({
-      files: DEFAULT_NEXTJS_FILES,
-      activeFile: 'app/page.tsx',
+      files: {},
+      activeFile: '',
       framework: 'nextjs',
       status: 'idle',
       statusMessage: '',
-      logs: ['[System] Workspace reset to default starter template.'],
+      logs: ['[System] Workspace reset.'],
     }),
 }));
