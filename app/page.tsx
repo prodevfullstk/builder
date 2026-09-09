@@ -19,12 +19,11 @@ import { SUGGESTED_PROMPTS } from '@/lib/ai/prompt-templates';
 export default function HomePage() {
   const router = useRouter();
   const [prompt, setPrompt] = useState('');
-  const [selectedFramework, setSelectedFramework] = useState('nextjs');
 
   const handleStartBuilding = (customPrompt?: string) => {
     const finalPrompt = (customPrompt || prompt).trim();
     if (finalPrompt) {
-      router.push(`/builder?prompt=${encodeURIComponent(finalPrompt)}&framework=${selectedFramework}`);
+      router.push(`/builder?prompt=${encodeURIComponent(finalPrompt)}`);
     } else {
       router.push('/builder');
     }
@@ -102,31 +101,15 @@ export default function HomePage() {
             />
 
             <div className="flex items-center justify-between pt-2 border-t border-zinc-800/80 mt-2">
-              {/* Framework choices */}
-              <div className="flex items-center gap-1.5">
-                {[
-                  { id: 'nextjs', label: 'Next.js' },
-                  { id: 'vite', label: 'Vite + React' },
-                  { id: 'astro', label: 'Astro' },
-                ].map((f) => (
-                  <button
-                    key={f.id}
-                    onClick={() => setSelectedFramework(f.id)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                      selectedFramework === f.id
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'bg-zinc-800/60 text-zinc-400 hover:text-zinc-200'
-                    }`}
-                  >
-                    {f.label}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2 text-xs text-zinc-500 font-mono">
+                <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                <span>Fullstack AI Engine</span>
               </div>
 
               {/* Submit CTA Button */}
               <button
                 onClick={() => handleStartBuilding()}
-                className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all shadow-md shadow-blue-900/40 hover:scale-105"
+                className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all shadow-md shadow-blue-900/40 hover:scale-105 cursor-pointer"
               >
                 <span>Build with AI</span>
                 <ArrowRight className="w-3.5 h-3.5" />

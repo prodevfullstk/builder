@@ -30,25 +30,17 @@ export function BuilderHeader() {
   } = useProjectStore();
 
   const [isExporting, setIsExporting] = useState(false);
-  const [showFrameworks, setShowFrameworks] = useState(false);
 
   const handleExport = async () => {
     try {
       setIsExporting(true);
-      await downloadProjectAsZip(files, `opendork-${framework}-project`);
+      await downloadProjectAsZip(files, 'opendork-project');
     } catch (err) {
       console.error('Failed to export zip:', err);
     } finally {
       setIsExporting(false);
     }
   };
-
-  const frameworks: { id: Framework; label: string }[] = [
-    { id: 'nextjs', label: 'Next.js' },
-    { id: 'vite', label: 'Vite + React' },
-    { id: 'astro', label: 'Astro' },
-    { id: 'node', label: 'Node.js' },
-  ];
 
   return (
     <header className="h-14 border-b border-zinc-800 bg-zinc-950 px-4 flex items-center justify-between select-none z-20">
@@ -63,37 +55,10 @@ export function BuilderHeader() {
           </span>
         </Link>
 
-        {/* Framework Selector */}
-        <div className="relative">
-          <button
-            onClick={() => setShowFrameworks(!showFrameworks)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 transition-colors"
-          >
-            <Layers className="w-3.5 h-3.5 text-blue-400" />
-            <span>{frameworks.find((f) => f.id === framework)?.label}</span>
-            <ChevronDown className="w-3 h-3 text-zinc-500" />
-          </button>
-
-          {showFrameworks && (
-            <div className="absolute top-full left-0 mt-1 w-36 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl p-1 z-50">
-              {frameworks.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => {
-                    setFramework(f.id);
-                    setShowFrameworks(false);
-                  }}
-                  className={`w-full text-left px-2.5 py-1.5 text-xs rounded-md transition-colors ${
-                    framework === f.id
-                      ? 'bg-blue-600 text-white font-semibold'
-                      : 'text-zinc-300 hover:bg-zinc-800'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          )}
+        {/* Fullstack Project Badge */}
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono bg-zinc-900/80 text-zinc-300 border border-zinc-800">
+          <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+          <span>Fullstack Project</span>
         </div>
 
         {/* Status indicator */}
