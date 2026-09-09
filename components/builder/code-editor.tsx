@@ -50,12 +50,30 @@ class MonacoErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySta
 }
 
 export function CodeEditor() {
-  const { files, activeFile, updateFile } = useProjectStore();
+  const { files, activeFile, updateFile, isStreaming, streamingFile } = useProjectStore();
   const editorRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = React.useState(false);
 
   const currentContent = files[activeFile] ?? '';
+
+  // Auto-scroll Monaco editor to bottom as code streams in real-time
+  useEffect(() => {
+    if (!isStreaming || !editorRef.current) return;
+    const editor = editorRef.current;
+    try {
+      const model = editor.getModel?.();
+      if (!model || model.isDisposed?.()) return;
+      const lineCount = model.getLineCount?.() || 1;
+      editor.revealLine?.(lineCount);
+      const scrollHeight = editor.getScrollHeight?.();
+      if (typeof scrollHeight === 'number') {
+        editor.setScrollTop?.(scrollHeight);
+      }
+    } catch {
+      // Ignored if model disposed
+    }
+  }, [currentContent, activeFile, isStreaming]);
 
   const getLanguageFromPath = (path: string): string => {
     if (path.endsWith('.tsx') || path.endsWith('.jsx')) return 'typescript';
@@ -102,6 +120,12 @@ export function CodeEditor() {
           <span className="text-xs font-mono font-medium text-zinc-200 truncate">
             {activeFile || 'No file selected'}
           </span>
+          {isStreaming && streamingFile === activeFile && (
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-[10px] text-blue-400 font-sans">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
+              <span>Streaming code...</span>
+            </span>
+          )}
         </div>
 
         <button

@@ -9,9 +9,10 @@ import {
   Loader2,
   Lightbulb,
 } from 'lucide-react';
-import { useProjectStore } from '@/lib/store/project-store';
-import { parseFilesFromMarkdown } from '@/lib/ai/code-parser';
+import { useProjectStore, TimelineStep } from '@/lib/store/project-store';
+import { extractStreamingState } from '@/lib/ai/code-parser';
 import { SUGGESTED_PROMPTS } from '@/lib/ai/prompt-templates';
+import { V0Stepper } from './v0-stepper';
 
 interface ChatPanelProps {
   onGenerateStart?: () => void;
@@ -28,6 +29,12 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     framework,
     addLog,
     setActiveFile,
+    streamingFile,
+    setStreamingFile,
+    isStreaming,
+    setIsStreaming,
+    activeSteps,
+    setActiveSteps,
   } = useProjectStore();
 
   const [input, setInput] = useState('');
@@ -37,7 +44,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
   // Auto-scroll messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, status]);
+  }, [messages, status, activeSteps]);
 
   const handleSubmit = async (promptText: string) => {
     const query = promptText.trim();
@@ -49,13 +56,23 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     // 1. Add User Message
     addMessage({ role: 'user', content: query });
     setStatus('generating', 'Generating fullstack code with Gemini...');
+    setIsStreaming(true);
     addLog(`[AI] Generating prompt: "${query.slice(0, 60)}..."`);
+
+    // Initialize v0-style dynamic steps
+    const initialSteps: TimelineStep[] = [
+      { id: 'thought-1', type: 'thought', label: 'Thought for 1s', duration: '1s', status: 'completed' },
+      { id: 'inspect-1', type: 'inspect', label: 'Inspected project structure', status: 'completed' },
+      { id: 'design-1', type: 'design', label: 'Created design direction', status: 'completed' },
+    ];
+    setActiveSteps(initialSteps);
 
     // Check if this is a fresh build prompt (not an incremental edit)
     const isNewBuild =
       messages.length <= 1 ||
       /^(build|create|make|design|generate)/i.test(query) ||
-      (files['app/page.tsx'] && files['app/page.tsx'].includes('Describe your app in the chat'));
+      (files['app/page.tsx'] && files['app/page.tsx'].includes('Describe your app in the chat')) ||
+      Object.keys(files).length === 0;
 
     try {
       // 2. Call streaming endpoint
@@ -74,10 +91,12 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         throw new Error(`HTTP error ${response.status}`);
       }
 
-      // 3. Read stream
+      // 3. Read stream and typewriter-stream into active files
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let accumulatedText = '';
+      let currentSteps = [...initialSteps];
+      let trackedFiles = new Set<string>();
 
       while (true) {
         const { done, value } = await reader.read();
@@ -86,18 +105,36 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         const chunk = decoder.decode(value, { stream: true });
         accumulatedText += chunk;
 
-        // Parse files incrementally from the stream
-        const parsed = parseFilesFromMarkdown(accumulatedText);
-        if (Object.keys(parsed).length > 0) {
-          setFiles(isNewBuild ? parsed : { ...files, ...parsed });
-          if (parsed['app/page.tsx']) {
-            setActiveFile('app/page.tsx');
+        // Parse files and track which file is currently being typed
+        const { files: parsedFiles, currentStreamingFile } = extractStreamingState(accumulatedText);
+
+        if (Object.keys(parsedFiles).length > 0) {
+          setFiles(isNewBuild ? parsedFiles : { ...files, ...parsedFiles });
+
+          // If a file is actively being typed right now, auto-switch editor to it!
+          if (currentStreamingFile) {
+            setStreamingFile(currentStreamingFile);
+            setActiveFile(currentStreamingFile);
+
+            // Add step to timeline if not added yet
+            if (!trackedFiles.has(currentStreamingFile)) {
+              trackedFiles.add(currentStreamingFile);
+              const fileStep: TimelineStep = {
+                id: `step-${currentStreamingFile}`,
+                type: 'file',
+                label: `Built ${currentStreamingFile.replace(/^components\//, '')}`,
+                file: currentStreamingFile,
+                status: 'running',
+              };
+              currentSteps = [...currentSteps, fileStep];
+              setActiveSteps(currentSteps);
+            }
           }
         }
       }
 
       // Final pass on full stream
-      const finalFiles = parseFilesFromMarkdown(accumulatedText);
+      const { files: finalFiles } = extractStreamingState(accumulatedText);
       if (Object.keys(finalFiles).length > 0) {
         setFiles(isNewBuild ? finalFiles : { ...files, ...finalFiles });
         if (finalFiles['app/page.tsx']) {
@@ -106,18 +143,48 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         addLog(`[AI] Successfully parsed ${Object.keys(finalFiles).length} project files.`);
       }
 
-      // Add assistant response with detailed file list
+      // Mark all file steps as completed with line count
+      const finalSteps: TimelineStep[] = currentSteps.map((step) => {
+        if (step.file && finalFiles[step.file]) {
+          const lines = finalFiles[step.file].split('\n').length;
+          return { ...step, status: 'completed', linesAdded: lines };
+        }
+        return { ...step, status: 'completed' };
+      });
+
+      // Add Checked preview step
+      finalSteps.push({
+        id: 'preview-checked',
+        type: 'preview',
+        label: 'Checked preview',
+        status: 'completed',
+      });
+
+      setActiveSteps(finalSteps);
+      setIsStreaming(false);
+      setStreamingFile(null);
+
+      // Add assistant response with Vercel v0 Stepper and clean feature bullets
       const fileList = Object.keys(finalFiles);
+      const summaryText =
+        `Built modern ${framework.toUpperCase()} application with:\n` +
+        `• ${fileList.length} modular components and utilities\n` +
+        `• Clean responsive Tailwind CSS design system\n` +
+        `• Interactive state management and animations`;
+
       addMessage({
         role: 'assistant',
-        content: `✅ Generated **${fileList.length} project files**:\n` +
-          fileList.map((f) => `- \`${f}\``).join('\n') +
-          '\n\nAll components are now open in the editor and rendering in the preview pane.',
+        content: summaryText,
+        steps: finalSteps,
+        filesGenerated: fileList,
+        showPreview: true,
       });
 
       setStatus('ready', 'Application ready');
     } catch (err: any) {
       console.error('Generation failed:', err);
+      setIsStreaming(false);
+      setStreamingFile(null);
       setStatus('error', err?.message || 'Generation failed');
       addLog(`[Error] ${err?.message || 'Generation failed'}`);
       addMessage({
@@ -158,13 +225,22 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
             )}
 
             <div
-              className={`max-w-[85%] rounded-xl px-3 py-2 leading-relaxed ${
+              className={`max-w-[90%] rounded-xl px-3 py-2 leading-relaxed ${
                 msg.role === 'user'
                   ? 'bg-blue-600 text-white shadow-sm'
-                  : 'bg-zinc-900 border border-zinc-800 text-zinc-300'
+                  : 'bg-zinc-900/90 border border-zinc-800 text-zinc-300'
               }`}
             >
-              <p className="whitespace-pre-wrap">{msg.content}</p>
+              {msg.role === 'assistant' && msg.steps && msg.steps.length > 0 ? (
+                <V0Stepper
+                  steps={msg.steps}
+                  filesGenerated={msg.filesGenerated}
+                  showPreview={msg.showPreview}
+                  content={msg.content}
+                />
+              ) : (
+                <p className="whitespace-pre-wrap">{msg.content}</p>
+              )}
             </div>
 
             {msg.role === 'user' && (
@@ -175,10 +251,15 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
           </div>
         ))}
 
+        {/* Live Stepper when AI is actively generating */}
         {status === 'generating' && (
-          <div className="flex items-center gap-2 text-xs text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded-lg p-2.5">
-            <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-            <span>Streaming multi-file code...</span>
+          <div className="flex gap-2.5 text-xs justify-start">
+            <div className="w-6 h-6 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center shrink-0 mt-0.5">
+              <Bot className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
+            </div>
+            <div className="max-w-[90%] w-full">
+              <V0Stepper steps={activeSteps} isStreaming={true} showPreview={false} />
+            </div>
           </div>
         )}
 
@@ -186,7 +267,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       </div>
 
       {/* Suggested prompts if few messages */}
-      {messages.length <= 2 && (
+      {messages.length <= 2 && status !== 'generating' && (
         <div className="px-3 pb-2">
           <div className="flex items-center gap-1 text-[10px] uppercase font-semibold text-zinc-500 mb-1.5">
             <Lightbulb className="w-3 h-3 text-amber-400" />

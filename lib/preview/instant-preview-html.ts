@@ -130,6 +130,9 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
         container.innerHTML = '<h3 style="font-weight:bold;margin-bottom:8px;">⚠️ ' + title + '</h3>' + details;
       }
       console.error('[Preview Error]', title, details);
+      try {
+        window.parent.postMessage({ type: 'preview-error', error: title + ': ' + String(details) }, '*');
+      } catch (e) {}
     }
 
     window.onerror = function(msg, url, line, col, error) {

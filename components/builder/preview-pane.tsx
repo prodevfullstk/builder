@@ -198,6 +198,9 @@ export function PreviewPane() {
               files={files}
               refreshNonce={previewKey}
               backendUrl={backendUrl}
+              onError={(err) => {
+                addLog(`[Preview Error] ${err}`);
+              }}
             />
           ) : (
             <NodeboxPreview

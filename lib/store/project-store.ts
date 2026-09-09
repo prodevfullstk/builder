@@ -9,12 +9,28 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+  steps?: TimelineStep[];
+  filesGenerated?: string[];
+  showPreview?: boolean;
+}
+
+export interface TimelineStep {
+  id: string;
+  type: 'thought' | 'inspect' | 'design' | 'file' | 'preview';
+  label: string;
+  detail?: string;
+  status: 'pending' | 'running' | 'completed';
+  file?: string;
+  linesAdded?: number;
+  duration?: string;
 }
 
 export interface ProjectState {
   // Virtual Files
   files: Record<string, string>;
   activeFile: string;
+  streamingFile: string | null;
+  isStreaming: boolean;
   framework: Framework;
   
   // UI & Layout
@@ -22,8 +38,9 @@ export interface ProjectState {
   status: BuilderStatus;
   statusMessage: string;
   
-  // Chat History
+  // Chat History & Timeline Steps
   messages: ChatMessage[];
+  activeSteps: TimelineStep[];
   
   // Runtime Logs
   logs: string[];
@@ -34,6 +51,11 @@ export interface ProjectState {
   createFile: (path: string, content?: string) => void;
   deleteFile: (path: string) => void;
   setActiveFile: (path: string) => void;
+  setStreamingFile: (file: string | null) => void;
+  setIsStreaming: (isStreaming: boolean) => void;
+  setActiveSteps: (steps: TimelineStep[]) => void;
+  addStep: (step: TimelineStep) => void;
+  updateStep: (id: string, updates: Partial<TimelineStep>) => void;
   setFramework: (framework: Framework) => void;
   setMode: (mode: BuilderMode) => void;
   setStatus: (status: BuilderStatus, message?: string) => void;
@@ -46,6 +68,8 @@ export interface ProjectState {
 export const useProjectStore = create<ProjectState>((set) => ({
   files: {},
   activeFile: '',
+  streamingFile: null,
+  isStreaming: false,
   framework: 'nextjs',
   mode: 'split',
   status: 'idle',
@@ -58,9 +82,25 @@ export const useProjectStore = create<ProjectState>((set) => ({
       timestamp: Date.now(),
     },
   ],
+  activeSteps: [],
   logs: ['[System] Workspace ready.'],
 
   setFiles: (files) => set({ files }),
+  setStreamingFile: (streamingFile) => set({ streamingFile }),
+  setIsStreaming: (isStreaming) => set({ isStreaming }),
+  setActiveSteps: (activeSteps) => set({ activeSteps }),
+
+  addStep: (step) =>
+    set((state) => ({
+      activeSteps: [...state.activeSteps, step],
+    })),
+
+  updateStep: (id, updates) =>
+    set((state) => ({
+      activeSteps: state.activeSteps.map((s) =>
+        s.id === id ? { ...s, ...updates } : s
+      ),
+    })),
 
   updateFile: (path, content) =>
     set((state) => ({
@@ -122,6 +162,9 @@ export const useProjectStore = create<ProjectState>((set) => ({
     set({
       files: {},
       activeFile: '',
+      streamingFile: null,
+      isStreaming: false,
+      activeSteps: [],
       framework: 'nextjs',
       status: 'idle',
       statusMessage: '',

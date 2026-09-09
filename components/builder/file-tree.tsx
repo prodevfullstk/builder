@@ -23,7 +23,15 @@ interface TreeNode {
 }
 
 export function FileTree() {
-  const { files, activeFile, setActiveFile, createFile, deleteFile } = useProjectStore();
+  const {
+    files,
+    activeFile,
+    setActiveFile,
+    createFile,
+    deleteFile,
+    streamingFile,
+    isStreaming,
+  } = useProjectStore();
   const [isCreating, setIsCreating] = useState(false);
   const [newFilePath, setNewFilePath] = useState('');
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
@@ -138,6 +146,8 @@ export function FileTree() {
       }
 
       const isActive = activeFile === node.path;
+      const isWriting = isStreaming && streamingFile === node.path;
+
       return (
         <div
           key={node.path}
@@ -151,6 +161,12 @@ export function FileTree() {
           <div className="flex items-center gap-1.5 truncate">
             {getFileIcon(node.path)}
             <span className="truncate">{node.name}</span>
+            {isWriting && (
+              <span className="flex items-center gap-1 ml-1 text-[9px] text-blue-400 font-sans font-normal px-1 py-0.2 rounded bg-blue-500/15 border border-blue-500/30 animate-pulse">
+                <span className="w-1 h-1 rounded-full bg-blue-400 animate-ping" />
+                <span>typing...</span>
+              </span>
+            )}
           </div>
 
           <button

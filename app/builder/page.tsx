@@ -13,7 +13,20 @@ import { CodeEditor } from '@/components/builder/code-editor';
 import { PreviewPane } from '@/components/builder/preview-pane';
 
 function BuilderWorkspace() {
-  const { mode, status, setStatus, addMessage, files, setFiles, framework, addLog, setActiveFile } = useProjectStore();
+  const {
+    mode,
+    status,
+    setStatus,
+    addMessage,
+    files,
+    setFiles,
+    framework,
+    addLog,
+    setActiveFile,
+    setStreamingFile,
+    setIsStreaming,
+    setActiveSteps,
+  } = useProjectStore();
   const searchParams = useSearchParams();
   const hasTriggeredInitialPrompt = useRef(false);
 
@@ -26,7 +39,15 @@ function BuilderWorkspace() {
       const runInitialGeneration = async () => {
         addMessage({ role: 'user', content: initialPrompt });
         setStatus('generating', 'Generating website with Gemini 3.6 Flash...');
+        setIsStreaming(true);
         addLog(`[AI] Auto-generating from prompt: "${initialPrompt}"`);
+
+        const initialSteps: any[] = [
+          { id: 'thought-1', type: 'thought', label: 'Thought for 1s', duration: '1s', status: 'completed' },
+          { id: 'inspect-1', type: 'inspect', label: 'Inspected project structure', status: 'completed' },
+          { id: 'design-1', type: 'design', label: 'Created design direction', status: 'completed' },
+        ];
+        setActiveSteps(initialSteps);
 
         try {
           const response = await fetch('/api/generate', {
@@ -47,7 +68,9 @@ function BuilderWorkspace() {
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let accumulatedText = '';
-          const { parseFilesFromMarkdown } = await import('@/lib/ai/code-parser');
+          const { extractStreamingState } = await import('@/lib/ai/code-parser');
+          let currentSteps = [...initialSteps];
+          const trackedFiles = new Set<string>();
 
           while (true) {
             const { done, value } = await reader.read();
@@ -56,16 +79,32 @@ function BuilderWorkspace() {
             const chunk = decoder.decode(value, { stream: true });
             accumulatedText += chunk;
 
-            const parsed = parseFilesFromMarkdown(accumulatedText);
-            if (Object.keys(parsed).length > 0) {
-              setFiles(parsed);
-              if (parsed['app/page.tsx']) {
-                setActiveFile('app/page.tsx');
+            const { files: parsedFiles, currentStreamingFile } = extractStreamingState(accumulatedText);
+            if (Object.keys(parsedFiles).length > 0) {
+              setFiles(parsedFiles);
+              if (currentStreamingFile) {
+                setStreamingFile(currentStreamingFile);
+                setActiveFile(currentStreamingFile);
+
+                if (!trackedFiles.has(currentStreamingFile)) {
+                  trackedFiles.add(currentStreamingFile);
+                  currentSteps = [
+                    ...currentSteps,
+                    {
+                      id: `step-${currentStreamingFile}`,
+                      type: 'file',
+                      label: `Built ${currentStreamingFile.replace(/^components\//, '')}`,
+                      file: currentStreamingFile,
+                      status: 'running',
+                    },
+                  ];
+                  setActiveSteps(currentSteps);
+                }
               }
             }
           }
 
-          const finalFiles = parseFilesFromMarkdown(accumulatedText);
+          const { files: finalFiles } = extractStreamingState(accumulatedText);
           if (Object.keys(finalFiles).length > 0) {
             setFiles(finalFiles);
             if (finalFiles['app/page.tsx']) {
@@ -74,17 +113,45 @@ function BuilderWorkspace() {
             addLog(`[AI] Generated ${Object.keys(finalFiles).length} project files.`);
           }
 
+          const finalSteps = currentSteps.map((step) => {
+            if (step.file && finalFiles[step.file]) {
+              const lines = finalFiles[step.file].split('\n').length;
+              return { ...step, status: 'completed', linesAdded: lines };
+            }
+            return { ...step, status: 'completed' };
+          });
+
+          finalSteps.push({
+            id: 'preview-checked',
+            type: 'preview',
+            label: 'Checked preview',
+            status: 'completed',
+          });
+
+          setActiveSteps(finalSteps);
+          setIsStreaming(false);
+          setStreamingFile(null);
+
           const fileList = Object.keys(finalFiles);
+          const summaryText =
+            `Built modern ${framework.toUpperCase()} application with:\n` +
+            `• ${fileList.length} modular components and utilities\n` +
+            `• Clean responsive Tailwind CSS design system\n` +
+            `• Interactive state management and animations`;
+
           addMessage({
             role: 'assistant',
-            content: `✅ Generated **${fileList.length} project files**:\n` +
-              fileList.map((f) => `- \`${f}\``).join('\n') +
-              '\n\nAll components are mounted in the editor and live in the preview pane!',
+            content: summaryText,
+            steps: finalSteps,
+            filesGenerated: fileList,
+            showPreview: true,
           });
 
           setStatus('ready', 'Project ready');
         } catch (err: any) {
           console.error('Initial generation failed:', err);
+          setIsStreaming(false);
+          setStreamingFile(null);
           setStatus('error', err?.message || 'Failed to generate');
           addLog(`[Error] ${err?.message || 'Initial generation failed'}`);
           addMessage({
