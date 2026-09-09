@@ -127,6 +127,7 @@ export function CodeEditor() {
       <div className="flex-1 w-full relative">
         <MonacoErrorBoundary fallbackFile={activeFile}>
           <Editor
+            path={activeFile}
             height="100%"
             language={getLanguageFromPath(activeFile)}
             value={currentContent}

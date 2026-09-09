@@ -59,7 +59,7 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
   </script>
 
   <!-- Babel Standalone for Instant In-Browser TSX/JSX Compilation -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.12/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.0/babel.min.js"></script>
 
   <style>
     body {
@@ -185,6 +185,11 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
 
     async function bootstrap() {
       try {
+        if (typeof Babel === 'undefined') {
+          showError('Compiler Loading Error', 'Babel standalone compiler could not be loaded from CDN. Please check your internet connection.');
+          return;
+        }
+
         const mergedFiles = { ...defaultFiles, ...rawFiles };
         const blobMap = {};
 

@@ -27,6 +27,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     setFiles,
     framework,
     addLog,
+    setActiveFile,
   } = useProjectStore();
 
   const [input, setInput] = useState('');
@@ -50,6 +51,12 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     setStatus('generating', 'Generating fullstack code with Gemini...');
     addLog(`[AI] Generating prompt: "${query.slice(0, 60)}..."`);
 
+    // Check if this is a fresh build prompt (not an incremental edit)
+    const isNewBuild =
+      messages.length <= 1 ||
+      /^(build|create|make|design|generate)/i.test(query) ||
+      (files['app/page.tsx'] && files['app/page.tsx'].includes('Describe your app in the chat'));
+
     try {
       // 2. Call streaming endpoint
       const response = await fetch('/api/generate', {
@@ -59,7 +66,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
           prompt: query,
           framework,
           history: messages.map((m) => ({ role: m.role, content: m.content })),
-          currentFiles: files,
+          currentFiles: isNewBuild ? {} : files,
         }),
       });
 
@@ -82,20 +89,20 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         // Parse files incrementally from the stream
         const parsed = parseFilesFromMarkdown(accumulatedText);
         if (Object.keys(parsed).length > 0) {
-          setFiles({
-            ...files,
-            ...parsed,
-          });
+          setFiles(isNewBuild ? parsed : { ...files, ...parsed });
+          if (parsed['app/page.tsx']) {
+            setActiveFile('app/page.tsx');
+          }
         }
       }
 
       // Final pass on full stream
       const finalFiles = parseFilesFromMarkdown(accumulatedText);
       if (Object.keys(finalFiles).length > 0) {
-        setFiles({
-          ...files,
-          ...finalFiles,
-        });
+        setFiles(isNewBuild ? finalFiles : { ...files, ...finalFiles });
+        if (finalFiles['app/page.tsx']) {
+          setActiveFile('app/page.tsx');
+        }
         addLog(`[AI] Successfully parsed ${Object.keys(finalFiles).length} project files.`);
       }
 

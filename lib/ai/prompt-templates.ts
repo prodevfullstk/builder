@@ -17,66 +17,10 @@ You create complete, production-ready, beautiful, and fully working web applicat
 5. Use Lucide React icons (\`lucide-react\`) for rich visual affordance.
 6. Make components interactive using React hooks (\`useState\`, \`useEffect\`). Include working tabs, toggles, filter states, and realistic mock data.
 
-### REQUIRED FILE STRUCTURE:
-You MUST generate all of the following files:
+### REQUIRED FILE STRUCTURE & GENERATION ORDER:
+You MUST generate all of the following files in this exact order:
 
-1. \`package.json\` - Project dependencies and scripts:
-\`\`\`json filename=package.json
-{
-  "name": "app",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "next": "^15.1.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "lucide-react": "^0.454.0",
-    "clsx": "^2.1.1",
-    "tailwind-merge": "^2.6.0"
-  }
-}
-\`\`\`
-
-2. \`lib/utils.ts\` - Classnames merging utility:
-\`\`\`ts filename=lib/utils.ts
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-\`\`\`
-
-3. \`components/Navbar.tsx\` - Responsive top navigation bar with logo, links, and action buttons.
-4. \`components/Hero.tsx\` - High-converting hero section with headline, badge, CTA buttons, and feature preview.
-5. \`components/Features.tsx\` - Core feature grid or domain-specific dashboard with Lucide icons.
-6. \`components/Pricing.tsx\` (or domain-specific main component like \`components/Dashboard.tsx\`, \`components/ProductGrid.tsx\`, etc.) - Interactive section with state/tabs.
-7. \`components/Footer.tsx\` - Polished footer with links, copyright, and social icons.
-8. \`app/layout.tsx\` - Root layout shell with HTML, fonts, and global metadata:
-\`\`\`tsx filename=app/layout.tsx
-import React from 'react';
-
-export const metadata = {
-  title: 'Modern Web Application',
-  description: 'Generated with Opendork AI',
-};
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en">
-      <body className="min-h-screen bg-zinc-950 text-zinc-100 antialiased font-sans">
-        {children}
-      </body>
-    </html>
-  );
-}
-\`\`\`
-
-9. \`app/page.tsx\` - Main page composing all modular components together:
+1. \`app/page.tsx\` - PRIMARY ENTRY COMPONENT (GENERATE THIS FIRST so the live preview renders immediately!):
 \`\`\`tsx filename=app/page.tsx
 'use client';
 
@@ -97,6 +41,63 @@ export default function Home() {
       <Footer />
     </main>
   );
+}
+\`\`\`
+
+2. \`app/layout.tsx\` - Root layout shell with HTML, fonts, and global metadata:
+\`\`\`tsx filename=app/layout.tsx
+import React from 'react';
+
+export const metadata = {
+  title: 'Modern Web Application',
+  description: 'Generated with Opendork AI',
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body className="min-h-screen bg-zinc-950 text-zinc-100 antialiased font-sans">
+        {children}
+      </body>
+    </html>
+  );
+}
+\`\`\`
+
+3. \`lib/utils.ts\` - Classnames merging utility:
+\`\`\`ts filename=lib/utils.ts
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+\`\`\`
+
+4. \`components/Navbar.tsx\` - Responsive top navigation bar with logo, links, and action buttons.
+5. \`components/Hero.tsx\` - High-converting hero section with headline, badge, CTA buttons, and feature preview.
+6. \`components/Features.tsx\` - Core feature grid or domain-specific dashboard with Lucide icons.
+7. \`components/Pricing.tsx\` (or domain-specific main component like \`components/Dashboard.tsx\`, \`components/TransactionList.tsx\`, \`components/ProductGrid.tsx\`, etc.) - Interactive section with state/tabs.
+8. \`components/Footer.tsx\` - Polished footer with links, copyright, and social icons.
+
+9. \`package.json\` - Project dependencies and scripts:
+\`\`\`json filename=package.json
+{
+  "name": "app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "lucide-react": "^0.454.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.6.0"
+  }
 }
 \`\`\`
 

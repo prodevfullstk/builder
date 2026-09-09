@@ -13,7 +13,7 @@ import { CodeEditor } from '@/components/builder/code-editor';
 import { PreviewPane } from '@/components/builder/preview-pane';
 
 function BuilderWorkspace() {
-  const { mode, status, setStatus, addMessage, files, setFiles, framework, addLog } = useProjectStore();
+  const { mode, status, setStatus, addMessage, files, setFiles, framework, addLog, setActiveFile } = useProjectStore();
   const searchParams = useSearchParams();
   const hasTriggeredInitialPrompt = useRef(false);
 
@@ -58,19 +58,19 @@ function BuilderWorkspace() {
 
             const parsed = parseFilesFromMarkdown(accumulatedText);
             if (Object.keys(parsed).length > 0) {
-              setFiles({
-                ...files,
-                ...parsed,
-              });
+              setFiles(parsed);
+              if (parsed['app/page.tsx']) {
+                setActiveFile('app/page.tsx');
+              }
             }
           }
 
           const finalFiles = parseFilesFromMarkdown(accumulatedText);
           if (Object.keys(finalFiles).length > 0) {
-            setFiles({
-              ...files,
-              ...finalFiles,
-            });
+            setFiles(finalFiles);
+            if (finalFiles['app/page.tsx']) {
+              setActiveFile('app/page.tsx');
+            }
             addLog(`[AI] Generated ${Object.keys(finalFiles).length} project files.`);
           }
 
