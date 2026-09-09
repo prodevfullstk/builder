@@ -305,8 +305,8 @@ export default function TestNodeboxPage() {
                 <NodeboxPreview
                   files={templates[selectedFramework] || {}}
                   framework={selectedFramework as Framework}
-                  onStatusChange={(s) => setStatus(s)}
-                  onError={(err) => setError(err)}
+                  onStatusChange={(s: string) => setStatus(s)}
+                  onError={(err: string) => setError(err)}
                   onReady={() => setStatus('ready')}
                 />
               )}

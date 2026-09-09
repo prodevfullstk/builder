@@ -131,7 +131,7 @@ export function CodeEditor() {
             language={getLanguageFromPath(activeFile)}
             value={currentContent}
             theme="vs-dark"
-            onChange={(val) => {
+            onChange={(val: string | undefined) => {
               if (activeFile && val !== undefined) {
                 updateFile(activeFile, val);
               }

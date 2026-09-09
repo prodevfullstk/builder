@@ -1,21 +1,28 @@
 /**
  * In-browser esbuild compiler and Virtual FS bundler
- * Inspired by openthron and llamacoder architectures
- * Compiles multi-file React/Next.js/TSX apps in ~50ms
+ * Uses esbuild-wasm loaded dynamically from CDN — no npm install needed
+ * Compiles multi-file React/TSX apps in ~50ms
  */
 
-import * as esbuild from 'esbuild-wasm';
+// Dynamic CDN import — avoids pnpm-lock.yaml conflict
+const ESBUILD_CDN = 'https://esm.sh/esbuild-wasm@0.28.2';
+const ESBUILD_WASM_URL = 'https://unpkg.com/esbuild-wasm@0.28.2/esbuild.wasm';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let esbuildInstance: any = null;
 let initPromise: Promise<void> | null = null;
 
-export function initCompiler(): Promise<void> {
+async function getEsbuild() {
+  if (esbuildInstance) return esbuildInstance;
   if (!initPromise) {
-    initPromise = esbuild.initialize({
-      worker: false,
-      wasmURL: 'https://unpkg.com/esbuild-wasm@0.28.0/esbuild.wasm',
-    });
+    initPromise = (async () => {
+      const mod = await import(/* webpackIgnore: true */ ESBUILD_CDN);
+      await mod.initialize({ worker: false, wasmURL: ESBUILD_WASM_URL });
+      esbuildInstance = mod;
+    })();
   }
-  return initPromise;
+  await initPromise;
+  return esbuildInstance;
 }
 
 const EXTENSIONS = ['', '.tsx', '.ts', '.jsx', '.js', '.css', '.json'];
@@ -44,7 +51,8 @@ function normalizePath(path: string): string {
   return '/' + out.join('/');
 }
 
-function getLoader(path: string): esbuild.Loader {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getLoader(path: string): any {
   if (path.endsWith('.tsx')) return 'tsx';
   if (path.endsWith('.ts')) return 'ts';
   if (path.endsWith('.jsx')) return 'jsx';
@@ -53,7 +61,7 @@ function getLoader(path: string): esbuild.Loader {
   return 'js';
 }
 
-export function createVirtualFsPlugin(files: Record<string, string>) {
+function createVirtualFsPlugin(files: Record<string, string>) {
   const lookup: Record<string, string> = {};
   for (const [key, value] of Object.entries(files)) {
     const cleanKey = key.replace(/^\/+/, '');
@@ -63,8 +71,10 @@ export function createVirtualFsPlugin(files: Record<string, string>) {
 
   return {
     name: 'virtual-fs',
-    setup(build: esbuild.PluginBuild) {
-      build.onResolve({ filter: /.*/ }, (args) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setup(build: any) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      build.onResolve({ filter: /.*/ }, (args: any) => {
         if (args.path.startsWith('https://') || args.path.startsWith('http://')) {
           return { path: args.path, external: true };
         }
@@ -78,7 +88,6 @@ export function createVirtualFsPlugin(files: Record<string, string>) {
         } else if (args.path.startsWith('@/')) {
           resolvedPath = normalizePath('/' + args.path.slice(2));
         } else if (!resolvedPath.startsWith('/')) {
-          // External bare npm specifiers (react, lucide-react, etc.)
           return { path: resolvedPath, external: true };
         }
 
@@ -91,7 +100,6 @@ export function createVirtualFsPlugin(files: Record<string, string>) {
           }
         }
 
-        // Try index files
         for (const ext of ['.tsx', '.ts', '.jsx', '.js']) {
           const candidate = candidateClean.replace(/\/$/, '') + '/index' + ext;
           if (lookup[candidate] !== undefined || lookup['/' + candidate] !== undefined) {
@@ -102,12 +110,12 @@ export function createVirtualFsPlugin(files: Record<string, string>) {
         return { path: args.path, external: true };
       });
 
-      build.onLoad({ filter: /.*/, namespace: 'virtual' }, (args) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      build.onLoad({ filter: /.*/, namespace: 'virtual' }, (args: any) => {
         const clean = cleanPath(args.path).replace(/^\/+/, '');
         let content = lookup[clean] ?? lookup['/' + clean];
 
         if (content === undefined) {
-          // Provide fallback utils or dummy module if missing
           if (clean.includes('utils')) {
             content = `export function cn(...inputs) { return inputs.filter(Boolean).join(' '); }`;
           } else {
@@ -115,8 +123,7 @@ export function createVirtualFsPlugin(files: Record<string, string>) {
           }
         }
 
-        // Strip 'use client' directives so esbuild doesn't treat as unsupported
-        const stripped = content.replace(/^['"]use client['"];?\s*/gm, '');
+        const stripped = content.replace(/^['""]use client['"];?\s*/gm, '');
 
         return {
           contents: stripped,
@@ -134,34 +141,28 @@ export interface BundleResult {
 }
 
 /**
- * Bundle project files and generate standalone HTML with Tailwind and import maps
+ * Bundle project files and generate standalone HTML.
+ * Loaded dynamically — no npm dependency on esbuild-wasm needed.
  */
 export async function bundleProjectWithEsbuild(
   files: Record<string, string>,
   backendUrl?: string
 ): Promise<BundleResult> {
-  await initCompiler();
+  const esbuild = await getEsbuild();
 
-  // Find root entry file
   const candidates = [
-    'app/page.tsx',
-    'app/page.jsx',
-    'src/App.tsx',
-    'src/App.jsx',
-    'App.tsx',
-    'App.jsx'
+    'app/page.tsx', 'app/page.jsx',
+    'src/App.tsx', 'src/App.jsx',
+    'App.tsx', 'App.jsx',
   ];
 
-  let entryFile = candidates.find(c => files[c] || files['/' + c]);
+  let entryFile = candidates.find((c) => files[c] || files['/' + c]);
   if (!entryFile) {
-    entryFile = Object.keys(files).find(f => f.endsWith('.tsx') || f.endsWith('.jsx'));
+    entryFile = Object.keys(files).find((f) => f.endsWith('.tsx') || f.endsWith('.jsx'));
   }
 
   if (!entryFile) {
-    return {
-      html: '',
-      errors: ['No React component (app/page.tsx or App.tsx) found to render.'],
-    };
+    return { html: '', errors: ['No React component found to render.'] };
   }
 
   const cleanEntry = entryFile.replace(/^\/+/, '').replace(/\.(tsx|jsx)$/, '');
@@ -170,21 +171,17 @@ export async function bundleProjectWithEsbuild(
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import RootComponent from '/${cleanEntry}';
-
 const rootEl = document.getElementById('root');
-if (rootEl) {
-  createRoot(rootEl).render(React.createElement(RootComponent));
-}
+if (rootEl) { createRoot(rootEl).render(React.createElement(RootComponent)); }
 `;
 
   const filesMap: Record<string, string> = {
     ...files,
     '/__entry__.tsx': virtualEntrySource,
-    'lib/utils.ts': files['lib/utils.ts'] || files['/lib/utils.ts'] || `
-      export function cn(...inputs) {
-        return inputs.filter(Boolean).join(' ');
-      }
-    `,
+    'lib/utils.ts':
+      files['lib/utils.ts'] ||
+      files['/lib/utils.ts'] ||
+      `export function cn(...inputs) { return inputs.filter(Boolean).join(' '); }`,
   };
 
   try {
@@ -200,76 +197,46 @@ if (rootEl) {
     });
 
     const outFiles = buildResult.outputFiles || [];
-    const jsFile = outFiles.find((f) => f.path.endsWith('.js'));
-    const cssFile = outFiles.find((f) => f.path.endsWith('.css'));
+    const jsFile = outFiles.find((f: any) => f.path.endsWith('.js'));
+    const cssFile = outFiles.find((f: any) => f.path.endsWith('.css'));
 
     const safeJs = (jsFile?.text || '').replace(/<\/script>/gi, '<\\/script>');
     const cssBlock = cssFile ? `<style>\n${cssFile.text}\n</style>` : '';
 
     const importMap = JSON.stringify({
       imports: {
-        'react': 'https://esm.sh/react@19?dev',
+        react: 'https://esm.sh/react@19?dev',
         'react/jsx-runtime': 'https://esm.sh/react@19/jsx-runtime?dev',
         'react-dom': 'https://esm.sh/react-dom@19?dev',
         'react-dom/client': 'https://esm.sh/react-dom@19/client?dev',
         'lucide-react': 'https://esm.sh/lucide-react@latest?dev',
         'framer-motion': 'https://esm.sh/framer-motion@latest?dev',
-        'clsx': 'https://esm.sh/clsx?dev',
+        clsx: 'https://esm.sh/clsx?dev',
         'tailwind-merge': 'https://esm.sh/tailwind-merge?dev',
-      }
+        zustand: 'https://esm.sh/zustand@latest?dev',
+      },
     }, null, 2);
 
-    // API Proxy Bridge shim: intercepts /api/... and routes to Nodebox backend if present
-    const apiBridgeShim = backendUrl ? `
-<script>
+    const apiBridgeShim = backendUrl
+      ? `<script>
 (function() {
-  const targetBackend = "${backendUrl}";
-  const originalFetch = window.fetch;
-  window.fetch = function(url, init) {
-    if (typeof url === 'string' && url.startsWith('/api/')) {
-      url = targetBackend + url;
-    }
-    return originalFetch(url, init);
+  const b = "${backendUrl}";
+  const o = window.fetch;
+  window.fetch = function(u, i) {
+    if (typeof u === 'string' && u.startsWith('/api/')) u = b + u;
+    return o(u, i);
   };
 })();
-</script>
-` : '';
+</script>`
+      : '';
 
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>App Live Preview</title>
+  <title>App Preview</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            border: "hsl(214.3 31.8% 91.4%)",
-            input: "hsl(214.3 31.8% 91.4%)",
-            ring: "hsl(222.2 84% 4.9%)",
-            background: "hsl(0 0% 100%)",
-            foreground: "hsl(222.2 84% 4.9%)",
-            primary: {
-              DEFAULT: "hsl(222.2 47.4% 11.2%)",
-              foreground: "hsl(210 40% 98%)",
-            },
-            secondary: {
-              DEFAULT: "hsl(210 40% 96.1%)",
-              foreground: "hsl(222.2 47.4% 11.2%)",
-            },
-            card: {
-              DEFAULT: "hsl(0 0% 100%)",
-              foreground: "hsl(222.2 84% 4.9%)",
-            },
-          },
-        },
-      },
-    };
-  </script>
   <script type="importmap">
 ${importMap}
   </script>
@@ -290,9 +257,6 @@ ${safeJs}
 
     return { html, errors: [] };
   } catch (err: any) {
-    return {
-      html: '',
-      errors: [err?.message || String(err)],
-    };
+    return { html: '', errors: [err?.message || String(err)] };
   }
 }

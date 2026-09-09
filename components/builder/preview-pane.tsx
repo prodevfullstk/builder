@@ -204,7 +204,7 @@ export function PreviewPane() {
               key={previewKey}
               files={files}
               framework={framework}
-              onStatusChange={(newStatus) => {
+              onStatusChange={(newStatus: string) => {
                 if (newStatus === 'ready') {
                   setStatus('ready', 'Preview ready');
                 } else if (newStatus === 'error') {
@@ -213,10 +213,10 @@ export function PreviewPane() {
                   setStatus('starting', `${newStatus}...`);
                 }
               }}
-              onError={(err) => {
+              onError={(err: string) => {
                 addLog(`[Nodebox Error] ${err}`);
               }}
-              onReady={(url) => {
+              onReady={(url: string) => {
                 setPreviewUrl(url);
                 // Expose backend URL for API proxy bridge when switching back to instant mode
                 if (hasBackend) {

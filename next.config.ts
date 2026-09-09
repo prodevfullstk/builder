@@ -15,10 +15,6 @@ const nextConfig: NextConfig = {
         buffer: false,
       };
     }
-    // Prevent esbuild-wasm from being bundled server-side
-    if (isServer) {
-      config.externals = [...(config.externals || []), 'esbuild-wasm'];
-    }
     return config;
   },
 };
