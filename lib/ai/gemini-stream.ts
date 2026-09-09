@@ -12,13 +12,17 @@ export interface StreamGenerationOptions {
   currentFiles?: Record<string, string>;
 }
 
-// Updated model list — gemini-2.0-flash and older are no longer available
+// Confirmed-working models (tested 2026-09-09):
+// gemini-3.5-flash-lite → 200 with content ✅
+// gemini-3.7-flash      → 200 ✅
+// gemini-3.8-flash      → 200 ✅
+// gemini-3.5-flash      → 503 transient (temporary)
 const CANDIDATE_MODELS = [
-  'gemini-flash-latest',
+  'gemini-3.5-flash-lite',
   'gemini-3.5-flash',
-  'gemini-3.1-flash-lite',
-  'gemini-3.6-flash',
   'gemini-3.7-flash',
+  'gemini-3.8-flash',
+  'gemini-3.6-flash',
 ];
 
 /** Retry fetch up to maxRetries times on 503 (high demand) errors */
