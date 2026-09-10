@@ -210,9 +210,9 @@ export function FileTree() {
       {/* Explorer Header */}
       <div className="h-9 px-3 border-b border-zinc-800 flex items-center justify-between text-zinc-400 font-semibold uppercase tracking-wider text-[10px]">
         <div className="flex items-center gap-1.5">
-          <FolderTree className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
           {!isMinimized && (
             <>
+              <FolderTree className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
               <span>Explorer</span>
               {totalFiles > 0 && (
                 <span className="px-1.5 py-0.2 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-500 font-normal">
