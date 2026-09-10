@@ -15,6 +15,24 @@ import {
 } from 'lucide-react';
 import { useProjectStore } from '@/lib/store/project-store';
 
+// VS Code-style sidebar panel toggle icon (same as chat panel)
+function PanelToggleIcon({ mirrored = false }: { mirrored?: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ transform: mirrored ? 'scaleX(-1)' : undefined }}
+    >
+      <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+      <rect x="1.5" y="2.5" width="4" height="11" rx="1.5" fill="currentColor" opacity="0.9" />
+      <line x1="5.5" y1="2.5" x2="5.5" y2="13.5" stroke="currentColor" strokeWidth="1.2" opacity="0.5" />
+    </svg>
+  );
+}
+
 interface TreeNode {
   name: string;
   path: string;
@@ -32,6 +50,7 @@ export function FileTree() {
     streamingFile,
     isStreaming,
   } = useProjectStore();
+  const [isMinimized, setIsMinimized] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [newFilePath, setNewFilePath] = useState('');
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
@@ -187,29 +206,44 @@ export function FileTree() {
   const totalFiles = Object.keys(files).length;
 
   return (
-    <div className="w-60 h-full border-r border-zinc-800 bg-zinc-950 flex flex-col select-none text-xs shrink-0">
+    <div className={`${isMinimized ? 'w-12' : 'w-60'} h-full border-r border-zinc-800 bg-zinc-950 flex flex-col select-none text-xs shrink-0 transition-all duration-300`}>
       {/* Explorer Header */}
       <div className="h-9 px-3 border-b border-zinc-800 flex items-center justify-between text-zinc-400 font-semibold uppercase tracking-wider text-[10px]">
         <div className="flex items-center gap-1.5">
-          <FolderTree className="w-3.5 h-3.5 text-zinc-400" />
-          <span>Explorer</span>
-          {totalFiles > 0 && (
-            <span className="px-1.5 py-0.2 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-500 font-normal">
-              {totalFiles}
-            </span>
+          <FolderTree className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+          {!isMinimized && (
+            <>
+              <span>Explorer</span>
+              {totalFiles > 0 && (
+                <span className="px-1.5 py-0.2 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-500 font-normal">
+                  {totalFiles}
+                </span>
+              )}
+            </>
           )}
         </div>
-        <button
-          onClick={() => setIsCreating(true)}
-          className="p-1 hover:bg-zinc-800 hover:text-zinc-200 rounded text-zinc-400 transition-colors"
-          title="New File"
-        >
-          <FilePlus className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-1">
+          {!isMinimized && (
+            <button
+              onClick={() => setIsCreating(true)}
+              className="p-1 hover:bg-zinc-800 hover:text-zinc-200 rounded text-zinc-400 transition-colors"
+              title="New File"
+            >
+              <FilePlus className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button
+            onClick={() => setIsMinimized(!isMinimized)}
+            className="p-1.5 hover:bg-zinc-800 rounded-md transition-colors text-zinc-500 hover:text-zinc-300"
+            title={isMinimized ? 'Expand explorer' : 'Collapse explorer'}
+          >
+            <PanelToggleIcon mirrored={isMinimized} />
+          </button>
+        </div>
       </div>
 
       {/* Inline Create Input */}
-      {isCreating && (
+      {!isMinimized && isCreating && (
         <form onSubmit={handleCreateSubmit} className="p-2 border-b border-zinc-800 bg-zinc-900/50">
           <input
             type="text"
@@ -226,15 +260,17 @@ export function FileTree() {
       )}
 
       {/* Hierarchical Folder Tree */}
-      <div className="flex-1 overflow-y-auto py-1">
-        {totalFiles === 0 ? (
-          <div className="p-4 text-center text-zinc-600 text-xs italic">
-            No files generated yet.
-          </div>
-        ) : (
-          renderTree(tree)
-        )}
-      </div>
+      {!isMinimized && (
+        <div className="flex-1 overflow-y-auto py-1">
+          {totalFiles === 0 ? (
+            <div className="p-4 text-center text-zinc-600 text-xs italic">
+              No files generated yet.
+            </div>
+          ) : (
+            renderTree(tree)
+          )}
+        </div>
+      )}
     </div>
   );
 }
