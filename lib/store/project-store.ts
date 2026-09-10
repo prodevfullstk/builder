@@ -39,6 +39,9 @@ export interface ProjectState {
   status: BuilderStatus;
   statusMessage: string;
   
+  // Cross-component signals
+  createFileRequest: number; // incremented to signal FileTree to open create input
+  
   // Chat History & Timeline Steps
   messages: ChatMessage[];
   activeSteps: TimelineStep[];
@@ -62,6 +65,7 @@ export interface ProjectState {
   setStatus: (status: BuilderStatus, message?: string) => void;
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
   updateLastMessageScreenshot: (screenshot: string) => void;
+  requestCreateFile: () => void;
   addLog: (log: string) => void;
   clearLogs: () => void;
   resetProject: () => void;
@@ -76,6 +80,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   mode: 'split',
   status: 'idle',
   statusMessage: '',
+  createFileRequest: 0,
   messages: [
     {
       id: 'init-1',
@@ -164,6 +169,9 @@ export const useProjectStore = create<ProjectState>((set) => ({
       }
       return { messages: msgs };
     }),
+
+  requestCreateFile: () =>
+    set((state) => ({ createFileRequest: state.createFileRequest + 1 })),
 
   addLog: (log) =>
     set((state) => ({

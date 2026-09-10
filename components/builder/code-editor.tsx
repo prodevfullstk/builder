@@ -3,7 +3,7 @@
 import React, { Component, ErrorInfo, ReactNode, useEffect, useRef } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
 import { useProjectStore } from '@/lib/store/project-store';
-import { FileCode, AlertCircle, Copy, Check } from 'lucide-react';
+import { FileCode, AlertCircle, Copy, Check, FilePlus } from 'lucide-react';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -49,13 +49,21 @@ class MonacoErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 }
 
-export function CodeEditor() {
-  const { files, activeFile, updateFile, isStreaming, streamingFile } = useProjectStore();
+interface CodeEditorProps {
+  onRequestNewFile?: () => void;
+}
+
+export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
+  const { files, activeFile, updateFile, isStreaming, streamingFile, requestCreateFile } = useProjectStore();
   const editorRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = React.useState(false);
 
-  const currentContent = files[activeFile] ?? '';
+  // Use prop if provided, otherwise fall back to store action
+  const handleNewFile = onRequestNewFile ?? requestCreateFile;
+
+  // Show editor for any open file, even if content is empty (blank new file)
+  const currentContent = activeFile ? (files[activeFile] ?? '') : '';
 
   // Auto-scroll Monaco editor to bottom as code streams in real-time
   useEffect(() => {
@@ -128,36 +136,61 @@ export function CodeEditor() {
           )}
         </div>
 
-        <button
-          onClick={handleCopyCode}
-          className="flex items-center gap-1 px-2 py-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 text-[11px] transition-colors"
-          title="Copy file contents"
-        >
-          {copied ? (
-            <>
-              <Check className="w-3 h-3 text-emerald-400" />
-              <span className="text-emerald-400">Copied</span>
-            </>
-          ) : (
-            <>
-              <Copy className="w-3 h-3" />
-              <span>Copy</span>
-            </>
+        <div className="flex items-center gap-1">
+          {/* New File button in tab bar */}
+          {handleNewFile && (
+            <button
+              onClick={handleNewFile}
+              className="flex items-center gap-1 px-2 py-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 text-[11px] transition-colors"
+              title="New File"
+            >
+              <FilePlus className="w-3 h-3" />
+              <span>New File</span>
+            </button>
           )}
-        </button>
+          <button
+            onClick={handleCopyCode}
+            disabled={!currentContent}
+            className="flex items-center gap-1 px-2 py-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 text-[11px] transition-colors disabled:opacity-30"
+            title="Copy file contents"
+          >
+            {copied ? (
+              <>
+                <Check className="w-3 h-3 text-emerald-400" />
+                <span className="text-emerald-400">Copied</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3 h-3" />
+                <span>Copy</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Editor Body */}
       <div className="flex-1 w-full relative">
-        {!activeFile || !currentContent ? (
-          <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-zinc-950 text-zinc-500 font-mono text-xs select-none">
+        {!activeFile ? (
+          /* No file open — show actionable empty state */
+          <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-zinc-950 select-none">
             <FileCode className="w-10 h-10 text-zinc-700 mb-3" />
             <p className="text-zinc-300 font-semibold mb-1 text-sm">No File Open</p>
-            <p className="text-zinc-600 max-w-xs">
-              Enter a prompt in the chat panel to generate your fullstack website
+            <p className="text-zinc-600 max-w-xs text-xs mb-5">
+              Generate a site with the AI chat, or create a new file to start coding manually.
             </p>
+            {handleNewFile && (
+              <button
+                onClick={handleNewFile}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs font-medium transition-colors"
+              >
+                <FilePlus className="w-4 h-4 text-blue-400" />
+                Create New File
+              </button>
+            )}
           </div>
         ) : (
+          /* Monaco editor — shown even for empty files so user can type */
           <MonacoErrorBoundary fallbackFile={activeFile}>
             <Editor
               path={activeFile}
@@ -190,3 +223,4 @@ export function CodeEditor() {
     </div>
   );
 }
+
