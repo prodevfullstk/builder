@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Sparkles,
@@ -46,12 +45,6 @@ export default function HomePage() {
             </div>
 
             <div className="flex items-center gap-4">
-              <Link
-                href="/test-nodebox"
-                className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
-              >
-                Runtime Tests
-              </Link>
               <button
                 onClick={() => handleStartBuilding()}
                 className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all shadow-md shadow-blue-900/30 hover:scale-105"
