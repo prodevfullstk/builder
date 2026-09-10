@@ -3,7 +3,7 @@
 import React, { Component, ErrorInfo, ReactNode, useEffect, useRef } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
 import { useProjectStore } from '@/lib/store/project-store';
-import { FileCode, AlertCircle, Copy, Check, FilePlus } from 'lucide-react';
+import { FileCode, AlertCircle, Copy, Check, FilePlus, Sparkles, Send, X, Loader2 } from 'lucide-react';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -54,14 +54,18 @@ interface CodeEditorProps {
 }
 
 export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
-  const { files, activeFile, updateFile, isStreaming, streamingFile, requestCreateFile } = useProjectStore();
+  const { files, activeFile, updateFile, isStreaming, streamingFile, requestCreateFile, framework, dbProvider, authProvider } = useProjectStore();
   const editorRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = React.useState(false);
   const [isSaved, setIsSaved] = React.useState(true);
   const [showSaveToast, setShowSaveToast] = React.useState(false);
+  const [aiBarOpen, setAiBarOpen] = React.useState(false);
+  const [aiPrompt, setAiPrompt] = React.useState('');
+  const [aiLoading, setAiLoading] = React.useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aiInputRef = useRef<HTMLInputElement>(null);
 
   // Use prop if provided, otherwise fall back to store action
   const handleNewFile = onRequestNewFile ?? requestCreateFile;
@@ -72,7 +76,14 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
   // Reset saved state when switching files
   useEffect(() => {
     setIsSaved(true);
+    setAiBarOpen(false);
+    setAiPrompt('');
   }, [activeFile]);
+
+  // Auto-focus AI input when bar opens
+  useEffect(() => {
+    if (aiBarOpen) setTimeout(() => aiInputRef.current?.focus(), 50);
+  }, [aiBarOpen]);
 
   // Auto-scroll Monaco editor to bottom as code streams in real-time
   useEffect(() => {
@@ -135,6 +146,56 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
     }
   };
 
+  const handleAskAI = async () => {
+    if (!aiPrompt.trim() || !activeFile || aiLoading) return;
+    setAiLoading(true);
+    try {
+      const response = await fetch('/api/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: aiPrompt.trim(),
+          activeFile,
+          files: { [activeFile]: currentContent },
+          framework,
+          dbProvider,
+          authProvider,
+          mode: 'edit',
+        }),
+      });
+      if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let result = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        result += decoder.decode(value, { stream: true });
+      }
+
+      // Extract file content from <FILES> block or raw response
+      const filesMatch = result.match(/<FILES>\s*([\s\S]*?)\s*<\/FILES>/);
+      if (filesMatch) {
+        try {
+          const json = JSON.parse(filesMatch[1].trim());
+          const file = json.files?.find((f: any) => f.path === activeFile) || json.files?.[0];
+          if (file?.content) updateFile(activeFile, file.content);
+        } catch { updateFile(activeFile, result.split('<FILES>')[0].trim()); }
+      } else {
+        // If no FILES block, use raw response as new file content
+        const cleaned = result.replace(/<FILES>[\s\S]*<\/FILES>/g, '').trim();
+        if (cleaned.length > 20) updateFile(activeFile, cleaned);
+      }
+      setAiPrompt('');
+      setAiBarOpen(false);
+    } catch (err: any) {
+      console.error('AI edit failed:', err);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   return (
     <div ref={containerRef} className="flex-1 h-full flex flex-col bg-zinc-950 overflow-hidden relative">
       {/* Editor Tab Bar */}
@@ -157,6 +218,21 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
+          {/* Ask AI button */}
+          {activeFile && (
+            <button
+              onClick={() => setAiBarOpen((v) => !v)}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] transition-colors ${
+                aiBarOpen
+                  ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
+                  : 'text-zinc-400 hover:text-violet-300 hover:bg-zinc-800'
+              }`}
+              title="Ask AI to modify this file"
+            >
+              <Sparkles className="w-3 h-3" />
+              <span>Ask AI</span>
+            </button>
+          )}
           {/* New File button in tab bar */}
           {handleNewFile && (
             <button
@@ -188,6 +264,37 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
           </button>
         </div>
       </div>
+
+      {/* AI Prompt Bar — slides in below tab bar */}
+      {aiBarOpen && activeFile && (
+        <div className="shrink-0 flex items-center gap-2 px-3 py-2 bg-zinc-900 border-b border-violet-500/30">
+          <Sparkles className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+          <input
+            ref={aiInputRef}
+            value={aiPrompt}
+            onChange={(e) => setAiPrompt(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleAskAI(); if (e.key === 'Escape') setAiBarOpen(false); }}
+            placeholder={`Ask AI to modify ${activeFile.split('/').pop()}...`}
+            className="flex-1 bg-transparent text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none font-mono"
+            disabled={aiLoading}
+          />
+          {aiLoading ? (
+            <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin shrink-0" />
+          ) : (
+            <button
+              onClick={handleAskAI}
+              disabled={!aiPrompt.trim()}
+              className="p-1 text-violet-400 hover:text-violet-200 disabled:opacity-30 transition-colors shrink-0"
+              title="Send to AI"
+            >
+              <Send className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button onClick={() => setAiBarOpen(false)} className="p-1 text-zinc-600 hover:text-zinc-400 shrink-0">
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
 
       {/* Editor Body */}
       <div className="flex-1 w-full relative">

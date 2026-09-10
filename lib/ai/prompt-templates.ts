@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AI System Prompt & Template Configurations
  * Unified AI Agent — supports conversation, code generation, and file editing
  */
@@ -59,48 +59,9 @@ const FRAMEWORK_GUIDES: Record<string, string> = {
 };
 
 // ─── Database & Auth templates ────────────────────────────────────────────
+// Delegated to database-templates.ts for richer, dedicated DB/auth support
 
-const DB_GUIDES: Record<string, string> = {
-  supabase: `
-### DATABASE: Supabase
-Generate these additional files:
-- supabase/migrations/001_initial_schema.sql  — CREATE TABLE statements with RLS
-- supabase/seed.sql                           — seed data
-- lib/supabase.ts                             — createClient() setup
-- .env.example                               — NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
-Never hardcode API keys in source files.`,
-
-  mysql: `
-### DATABASE: MySQL
-Generate these additional files:
-- database/schema.sql    — CREATE TABLE statements
-- database/seed.sql      — INSERT seed data
-- lib/db.ts             — mysql2 connection pool
-- .env.example           — DATABASE_URL=mysql://user:pass@localhost:3306/dbname`,
-
-  postgres: `
-### DATABASE: PostgreSQL
-Generate these additional files:
-- database/schema.sql    — CREATE TABLE statements
-- database/seed.sql      — seed data
-- lib/db.ts             — pg Pool setup
-- .env.example           — DATABASE_URL=postgresql://...`,
-
-  prisma: `
-### ORM: Prisma
-Generate these additional files:
-- prisma/schema.prisma   — complete data model
-- lib/prisma.ts         — PrismaClient singleton
-- .env.example           — DATABASE_URL`,
-
-  drizzle: `
-### ORM: Drizzle
-Generate these additional files:
-- src/db/schema.ts       — Drizzle table definitions
-- src/db/index.ts        — db connection
-- drizzle.config.ts      — Drizzle config
-- .env.example           — DATABASE_URL`,
-};
+import { getFullStackDBGuide, DBProvider, AuthProvider } from './database-templates';
 
 // ─── Main system prompt ────────────────────────────────────────────────────
 
@@ -111,7 +72,7 @@ export function getSystemPrompt(
   mode: 'build' | 'chat' | 'edit' = 'build'
 ): string {
   const frameworkGuide = FRAMEWORK_GUIDES[framework] || FRAMEWORK_GUIDES['nextjs'];
-  const dbGuide = DB_GUIDES[dbProvider] || '';
+  const dbGuide = getFullStackDBGuide(dbProvider as DBProvider, authProvider as AuthProvider);
 
   if (mode === 'chat') {
     return `You are Opendork, a friendly AI assistant for a fullstack web app builder.

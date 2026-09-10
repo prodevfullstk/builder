@@ -1,7 +1,9 @@
-﻿/**
+/**
  * Gemini AI Streaming Client
  * Supports the new /api/agent unified endpoint with full context passing
  */
+
+import { getSystemPrompt } from "./prompt-templates";
 
 export interface ChatMessagePayload {
   role: "system" | "user" | "assistant";
@@ -55,13 +57,21 @@ export async function createGeminiStream({
     "https://generativelanguage.googleapis.com/v1beta/openai";
   const endpoint = `${apiUrl}/chat/completions`;
 
-  // Build messages — history may already contain system prompt from /api/agent
+  // Build messages:
+  // - If /api/agent already injected a system prompt into history → use it as-is
+  // - If called directly (e.g. /api/generate) with no system prompt → inject fallback
   const hasSystemInHistory = history.some((m) => m.role === "system");
 
   const messages: ChatMessagePayload[] = hasSystemInHistory
-    ? [...history.slice(-8), { role: "user", content: prompt }]
-    : [
+    ? [
+        // System prompt is already first in history from /api/agent
         ...history.slice(-8),
+        { role: "user", content: prompt },
+      ]
+    : [
+        // Fallback: inject framework-specific system prompt
+        { role: "system", content: getSystemPrompt(framework, "none", "none", "build") },
+        ...history.filter((m) => m.role !== "system").slice(-6),
         { role: "user", content: prompt },
       ];
 
