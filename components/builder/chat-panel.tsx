@@ -64,6 +64,14 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, status, activeSteps]);
 
+  // Detect if the user wants to BUILD something vs casual chat
+  const isBuildIntent = (q: string): boolean => {
+    const buildPatterns = /\b(build|create|make|design|generate|develop|code|write|add|fix|update|change|modify|refactor|implement|setup|configure|deploy|show me|give me)\b/i;
+    const appPatterns = /\b(app|website|site|page|landing|dashboard|saas|portfolio|store|shop|blog|form|api|backend|server|component|feature|button|navbar|hero|footer|modal|table|chart|list|card)\b/i;
+    // If it matches a build verb OR mentions an app-related noun with any intent
+    return buildPatterns.test(q) || (appPatterns.test(q) && q.length > 20);
+  };
+
   const handleSubmit = async (promptText: string) => {
     const query = promptText.trim();
     if (!query || status === 'generating') return;
@@ -71,11 +79,47 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     setInput('');
     onGenerateStart?.();
 
-    // 1. Add User Message
+    // Add user message
     addMessage({ role: 'user', content: query });
+
+    const isBuild = isBuildIntent(query);
+
+    // ── CONVERSATION MODE ─────────────────────────────────────
+    if (!isBuild) {
+      setStatus('generating', 'Thinking...');
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: query,
+            history: messages.map((m) => ({ role: m.role, content: m.content })),
+          }),
+        });
+        if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let chatReply = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chatReply += decoder.decode(value, { stream: true });
+        }
+
+        addMessage({ role: 'assistant', content: chatReply.trim() });
+        setStatus('idle');
+      } catch (err: any) {
+        addMessage({ role: 'assistant', content: `Sorry, I had trouble connecting. Try again!` });
+        setStatus('idle');
+      }
+      return;
+    }
+
+    // ── BUILD MODE ───────────────────────────────────────────
     setStatus('generating', 'Generating fullstack code with Gemini...');
     setIsStreaming(true);
-    addLog(`[AI] Generating prompt: "${query.slice(0, 60)}..."`);
+    addLog(`[AI] Generating: "${query.slice(0, 60)}..."`);
 
     // Initialize v0-style dynamic steps
     const initialSteps: TimelineStep[] = [
@@ -85,15 +129,12 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     ];
     setActiveSteps(initialSteps);
 
-    // Check if this is a fresh build prompt (not an incremental edit)
+    // Fresh build only when explicitly building something new with no files yet
     const isNewBuild =
-      messages.length <= 1 ||
-      /^(build|create|make|design|generate)/i.test(query) ||
-      (files['app/page.tsx'] && files['app/page.tsx'].includes('Describe your app in the chat')) ||
-      Object.keys(files).length === 0;
+      Object.keys(files).length === 0 ||
+      /^(build|create|make|design|generate)\s/i.test(query);
 
     try {
-      // 2. Call streaming endpoint
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -109,7 +150,6 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         throw new Error(`HTTP error ${response.status}`);
       }
 
-      // 3. Read stream and typewriter-stream into active files
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let accumulatedText = '';
@@ -123,18 +163,15 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         const chunk = decoder.decode(value, { stream: true });
         accumulatedText += chunk;
 
-        // Parse files and track which file is currently being typed
         const { files: parsedFiles, currentStreamingFile } = extractStreamingState(accumulatedText);
 
         if (Object.keys(parsedFiles).length > 0) {
           setFiles(isNewBuild ? parsedFiles : { ...files, ...parsedFiles });
 
-          // If a file is actively being typed right now, auto-switch editor to it!
           if (currentStreamingFile) {
             setStreamingFile(currentStreamingFile);
             setActiveFile(currentStreamingFile);
 
-            // Add step to timeline if not added yet
             if (!trackedFiles.has(currentStreamingFile)) {
               trackedFiles.add(currentStreamingFile);
               const fileStep: TimelineStep = {
@@ -151,17 +188,14 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         }
       }
 
-      // Final pass on full stream
+      // Final parse
       const { files: finalFiles } = extractStreamingState(accumulatedText);
       if (Object.keys(finalFiles).length > 0) {
         setFiles(isNewBuild ? finalFiles : { ...files, ...finalFiles });
-        if (finalFiles['app/page.tsx']) {
-          setActiveFile('app/page.tsx');
-        }
+        if (finalFiles['app/page.tsx']) setActiveFile('app/page.tsx');
         addLog(`[AI] Successfully parsed ${Object.keys(finalFiles).length} project files.`);
       }
 
-      // Mark all file steps as completed with line count
       const finalSteps: TimelineStep[] = currentSteps.map((step) => {
         if (step.file && finalFiles[step.file]) {
           const lines = finalFiles[step.file].split('\n').length;
@@ -170,19 +204,12 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         return { ...step, status: 'completed' };
       });
 
-      // Add Checked preview step
-      finalSteps.push({
-        id: 'preview-checked',
-        type: 'preview',
-        label: 'Checked preview',
-        status: 'completed',
-      });
+      finalSteps.push({ id: 'preview-checked', type: 'preview', label: 'Checked preview', status: 'completed' });
 
       setActiveSteps(finalSteps);
       setIsStreaming(false);
       setStreamingFile(null);
 
-      // Add assistant response with Vercel v0 Stepper and clean feature bullets
       const fileList = Object.keys(finalFiles);
       const summaryText =
         `Built modern ${framework.toUpperCase()} application with:\n` +

@@ -6,12 +6,14 @@ import {
   FileJson,
   FileText,
   FilePlus,
+  FolderPlus,
   Trash2,
   FolderTree,
   Folder,
   FolderOpen,
   ChevronRight,
   ChevronDown,
+  Pencil,
 } from 'lucide-react';
 import { useProjectStore } from '@/lib/store/project-store';
 
@@ -56,7 +58,10 @@ export function FileTree() {
   const [newFilePath, setNewFilePath] = useState('');
   const [folderPrefix, setFolderPrefix] = useState('');
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
+  const [renamingFile, setRenamingFile] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   const createInputRef = React.useRef<HTMLInputElement>(null);
+  const renameInputRef = React.useRef<HTMLInputElement>(null);
 
   // Watch store signal from CodeEditor's "New File" button
   useEffect(() => {
@@ -88,20 +93,10 @@ export function FileTree() {
         const isLast = i === parts.length - 1;
 
         if (isLast) {
-          currentLevel[part] = {
-            name: part,
-            path: currentPath,
-            isFolder: false,
-            children: {},
-          };
+          currentLevel[part] = { name: part, path: currentPath, isFolder: false, children: {} };
         } else {
           if (!currentLevel[part]) {
-            currentLevel[part] = {
-              name: part,
-              path: currentPath,
-              isFolder: true,
-              children: {},
-            };
+            currentLevel[part] = { name: part, path: currentPath, isFolder: true, children: {} };
           }
           currentLevel = currentLevel[part].children;
         }
@@ -115,10 +110,20 @@ export function FileTree() {
     setFolderPrefix(prefix);
     setNewFilePath(prefix);
     setIsCreating(true);
-    // expand the folder if it's collapsed
     if (prefix) {
       const folderPath = prefix.replace(/\/$/, '');
       setCollapsedFolders((prev) => ({ ...prev, [folderPath]: false }));
+    }
+  };
+
+  // Create a subfolder by creating a placeholder file inside it
+  const openCreateSubfolder = (parentPath: string) => {
+    const prefix = parentPath ? `${parentPath}/` : '';
+    setFolderPrefix(prefix);
+    setNewFilePath(prefix);
+    setIsCreating(true);
+    if (parentPath) {
+      setCollapsedFolders((prev) => ({ ...prev, [parentPath]: false }));
     }
   };
 
@@ -137,6 +142,28 @@ export function FileTree() {
     setNewFilePath('');
     setFolderPrefix('');
     setIsCreating(false);
+  };
+
+  // Rename: commit the new filename
+  const startRename = (filePath: string) => {
+    setRenamingFile(filePath);
+    setRenameValue(filePath.split('/').pop() || filePath);
+    setTimeout(() => renameInputRef.current?.select(), 50);
+  };
+
+  const commitRename = (oldPath: string) => {
+    const newName = renameValue.trim();
+    if (!newName || newName === oldPath.split('/').pop()) {
+      setRenamingFile(null);
+      return;
+    }
+    const parentDir = oldPath.includes('/') ? oldPath.slice(0, oldPath.lastIndexOf('/') + 1) : '';
+    const newPath = `${parentDir}${newName}`;
+    const content = files[oldPath] ?? '';
+    createFile(newPath, content);
+    deleteFile(oldPath);
+    setActiveFile(newPath);
+    setRenamingFile(null);
   };
 
   const getFileIcon = (path: string) => {
@@ -189,17 +216,23 @@ export function FileTree() {
                 <span className="truncate">{node.name}</span>
                 <span className="ml-2 text-[10px] text-zinc-600">({childCount})</span>
               </button>
-              {/* "New file in this folder" button — appears on hover */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openCreateInFolder(`${node.path}/`);
-                }}
-                className="opacity-0 group-hover:opacity-100 p-1 hover:text-blue-400 text-zinc-500 transition-opacity shrink-0"
-                title={`New file in ${node.name}/`}
-              >
-                <FilePlus className="w-3 h-3" />
-              </button>
+              {/* Hover action buttons: New File + New Folder */}
+              <div className="opacity-0 group-hover:opacity-100 flex items-center transition-opacity shrink-0">
+                <button
+                  onClick={(e) => { e.stopPropagation(); openCreateInFolder(`${node.path}/`); }}
+                  className="p-1 hover:text-blue-400 text-zinc-500"
+                  title={`New file in ${node.name}/`}
+                >
+                  <FilePlus className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); openCreateSubfolder(node.path); }}
+                  className="p-1 hover:text-amber-400 text-zinc-500"
+                  title={`New folder in ${node.name}/`}
+                >
+                  <FolderPlus className="w-3 h-3" />
+                </button>
+              </div>
             </div>
 
             {!isCollapsed && renderTree(node.children, depth + 1)}
@@ -209,42 +242,71 @@ export function FileTree() {
 
       const isActive = activeFile === node.path;
       const isWriting = isStreaming && streamingFile === node.path;
+      const isRenaming = renamingFile === node.path;
 
       return (
         <div
           key={node.path}
-          onClick={() => setActiveFile(node.path)}
+          onClick={() => { if (!isRenaming) setActiveFile(node.path); }}
+          onDoubleClick={(e) => { e.stopPropagation(); startRename(node.path); }}
           className={`group flex items-center justify-between py-1.5 pr-2.5 cursor-pointer transition-colors text-[11px] ${indentClass} ${
             isActive
               ? 'bg-blue-600/15 text-blue-400 font-medium border-l-2 border-blue-500'
               : 'text-zinc-400 hover:bg-zinc-900/60 hover:text-zinc-200 border-l-2 border-transparent'
           }`}
         >
-          <div className="flex items-center gap-1.5 truncate">
+          <div className="flex items-center gap-1.5 flex-1 min-w-0 truncate">
             {getFileIcon(node.path)}
-            <span className="truncate">{node.name}</span>
-            {isWriting && (
-              <span className="flex items-center gap-1 ml-1 text-[9px] text-blue-400 font-sans font-normal px-1 py-0.2 rounded bg-blue-500/15 border border-blue-500/30 animate-pulse">
-                <span className="w-1 h-1 rounded-full bg-blue-400 animate-ping" />
-                <span>typing...</span>
-              </span>
+            {isRenaming ? (
+              <input
+                ref={renameInputRef}
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); commitRename(node.path); }
+                  if (e.key === 'Escape') setRenamingFile(null);
+                }}
+                onBlur={() => commitRename(node.path)}
+                autoFocus
+                onClick={(e) => e.stopPropagation()}
+                className="flex-1 min-w-0 px-1 py-0.5 bg-zinc-800 border border-blue-500 rounded text-[11px] text-zinc-200 focus:outline-none font-mono"
+              />
+            ) : (
+              <>
+                <span className="truncate">{node.name}</span>
+                {isWriting && (
+                  <span className="flex items-center gap-1 ml-1 text-[9px] text-blue-400 font-sans font-normal px-1 py-0.2 rounded bg-blue-500/15 border border-blue-500/30 animate-pulse">
+                    <span className="w-1 h-1 rounded-full bg-blue-400 animate-ping" />
+                    <span>typing...</span>
+                  </span>
+                )}
+              </>
             )}
           </div>
 
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              deleteFile(node.path);
-            }}
-            className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-red-400 text-zinc-600 transition-opacity"
-            title="Delete file"
-          >
-            <Trash2 className="w-3 h-3" />
-          </button>
+          {!isRenaming && (
+            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity shrink-0">
+              <button
+                onClick={(e) => { e.stopPropagation(); startRename(node.path); }}
+                className="p-0.5 hover:text-blue-400 text-zinc-600"
+                title="Rename file"
+              >
+                <Pencil className="w-3 h-3" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); deleteFile(node.path); }}
+                className="p-0.5 hover:text-red-400 text-zinc-600"
+                title="Delete file"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          )}
         </div>
       );
     });
   };
+
 
   const totalFiles = Object.keys(files).length;
 

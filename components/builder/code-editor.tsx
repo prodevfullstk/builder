@@ -58,12 +58,21 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
   const editorRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = React.useState(false);
+  const [isSaved, setIsSaved] = React.useState(true);
+  const [showSaveToast, setShowSaveToast] = React.useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Use prop if provided, otherwise fall back to store action
   const handleNewFile = onRequestNewFile ?? requestCreateFile;
 
   // Show editor for any open file, even if content is empty (blank new file)
   const currentContent = activeFile ? (files[activeFile] ?? '') : '';
+
+  // Reset saved state when switching files
+  useEffect(() => {
+    setIsSaved(true);
+  }, [activeFile]);
 
   // Auto-scroll Monaco editor to bottom as code streams in real-time
   useEffect(() => {
@@ -92,20 +101,27 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
     return 'plaintext';
   };
 
-  const handleEditorMount: OnMount = (editor) => {
+  const triggerSaveToast = () => {
+    setIsSaved(true);
+    setShowSaveToast(true);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setShowSaveToast(false), 2000);
+  };
+
+  const handleEditorMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
+
+    // Ctrl+S / Cmd+S → show "Auto-saved" toast
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      triggerSaveToast();
+    });
 
     // Resilient ResizeObserver
     if (containerRef.current && typeof ResizeObserver !== 'undefined') {
       let isDisposed = false;
-      editor.onDidDispose(() => {
-        isDisposed = true;
-      });
-
+      editor.onDidDispose(() => { isDisposed = true; });
       const observer = new ResizeObserver(() => {
-        if (!isDisposed && editor.getDomNode()) {
-          editor.layout();
-        }
+        if (!isDisposed && editor.getDomNode()) editor.layout();
       });
       observer.observe(containerRef.current);
     }
@@ -120,23 +136,27 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
   };
 
   return (
-    <div ref={containerRef} className="flex-1 h-full flex flex-col bg-zinc-950 overflow-hidden">
+    <div ref={containerRef} className="flex-1 h-full flex flex-col bg-zinc-950 overflow-hidden relative">
       {/* Editor Tab Bar */}
-      <div className="h-9 px-3 border-b border-zinc-800 bg-zinc-900/80 flex items-center justify-between select-none">
-        <div className="flex items-center gap-2">
-          <FileCode className="w-3.5 h-3.5 text-blue-400" />
+      <div className="h-9 px-3 border-b border-zinc-800 bg-zinc-900/80 flex items-center justify-between select-none shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <FileCode className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+          {/* Unsaved indicator dot */}
+          {activeFile && !isSaved && !isStreaming && (
+            <span className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0" title="Unsaved changes" />
+          )}
           <span className="text-xs font-mono font-medium text-zinc-200 truncate">
             {activeFile || 'No file selected'}
           </span>
           {isStreaming && streamingFile === activeFile && (
-            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-[10px] text-blue-400 font-sans">
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-[10px] text-blue-400 font-sans shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
               <span>Streaming code...</span>
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
           {/* New File button in tab bar */}
           {handleNewFile && (
             <button
@@ -201,6 +221,10 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
               onChange={(val: string | undefined) => {
                 if (activeFile && val !== undefined) {
                   updateFile(activeFile, val);
+                  // Mark as unsaved; auto-save happens immediately in store
+                  setIsSaved(false);
+                  if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+                  saveTimerRef.current = setTimeout(() => setIsSaved(true), 800);
                 }
               }}
               onMount={handleEditorMount}
@@ -220,7 +244,16 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
           </MonacoErrorBoundary>
         )}
       </div>
+
+      {/* Ctrl+S Auto-save Toast */}
+      {showSaveToast && (
+        <div className="absolute bottom-4 right-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-xs text-emerald-400 font-medium shadow-lg animate-fade-in pointer-events-none">
+          <Check className="w-3.5 h-3.5" />
+          Auto-saved
+        </div>
+      )}
     </div>
   );
 }
+
 
