@@ -5,8 +5,28 @@ import {
   Send,
   Sparkles,
   Loader2,
-  Minus,
 } from 'lucide-react';
+
+// VS Code-style sidebar panel toggle icon
+function PanelToggleIcon({ mirrored = false }: { mirrored?: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ transform: mirrored ? 'scaleX(-1)' : undefined }}
+    >
+      {/* Outer rectangle */}
+      <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+      {/* Left panel stripe */}
+      <rect x="1.5" y="2.5" width="4" height="11" rx="1.5" fill="currentColor" opacity="0.9" />
+      {/* Inner right divider line */}
+      <line x1="5.5" y1="2.5" x2="5.5" y2="13.5" stroke="currentColor" strokeWidth="1.2" opacity="0.5" />
+    </svg>
+  );
+}
 import { useProjectStore, TimelineStep } from '@/lib/store/project-store';
 import { extractStreamingState } from '@/lib/ai/code-parser';
 import { SUGGESTED_PROMPTS } from '@/lib/ai/prompt-templates';
@@ -210,10 +230,10 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         </div>
         <button
           onClick={() => setIsMinimized(!isMinimized)}
-          className="p-1 hover:bg-zinc-800 rounded transition-colors"
-          title={isMinimized ? "Expand chat panel" : "Minimize chat panel"}
+          className="p-1.5 hover:bg-zinc-800 rounded-md transition-colors text-zinc-500 hover:text-zinc-300"
+          title={isMinimized ? "Expand chat panel" : "Collapse chat panel"}
         >
-          <Minus className="w-3.5 h-3.5" />
+          <PanelToggleIcon mirrored={isMinimized} />
         </button>
       </div>
 
