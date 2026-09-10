@@ -195,6 +195,7 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
 
         const mergedFiles = { ...defaultFiles, ...rawFiles };
         const blobMap = {};
+        const usedFallbacks = [];
 
         // 1. Transpile all .ts / .tsx / .jsx / .js files
         for (const [rawPath, content] of Object.entries(mergedFiles)) {
@@ -312,6 +313,19 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
         if (spinner) {
           spinner.style.opacity = '0';
           setTimeout(() => spinner.remove(), 200);
+        }
+
+        // Detect which system fallback files were used (not overridden by AI)
+        const fallbackKeys = Object.keys(defaultFiles);
+        const aiKeys = Object.keys(rawFiles);
+        const usedFallbacks = fallbackKeys.filter(k => !aiKeys.includes(k));
+        if (usedFallbacks.length > 0) {
+          try {
+            window.parent.postMessage({
+              type: 'preview-fallback-warning',
+              fallbacks: usedFallbacks.map(f => f.split('/').pop()),
+            }, '*');
+          } catch(e) {}
         }
 
         // Auto-screenshot after React has painted

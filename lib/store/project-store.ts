@@ -38,6 +38,10 @@ export interface ProjectState {
   mode: BuilderMode;
   status: BuilderStatus;
   statusMessage: string;
+
+  // Tech stack selection
+  dbProvider: 'none' | 'supabase' | 'mysql' | 'postgres' | 'sqlite' | 'prisma' | 'drizzle';
+  authProvider: 'none' | 'supabase' | 'nextauth' | 'clerk';
   
   // Cross-component signals
   createFileRequest: number; // incremented to signal FileTree to open create input
@@ -63,6 +67,8 @@ export interface ProjectState {
   setFramework: (framework: Framework) => void;
   setMode: (mode: BuilderMode) => void;
   setStatus: (status: BuilderStatus, message?: string) => void;
+  setDbProvider: (db: ProjectState['dbProvider']) => void;
+  setAuthProvider: (auth: ProjectState['authProvider']) => void;
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
   updateLastMessageScreenshot: (screenshot: string) => void;
   requestCreateFile: () => void;
@@ -80,6 +86,8 @@ export const useProjectStore = create<ProjectState>((set) => ({
   mode: 'split',
   status: 'idle',
   statusMessage: '',
+  dbProvider: 'none',
+  authProvider: 'none',
   createFileRequest: 0,
   messages: [
     {
@@ -145,6 +153,10 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setMode: (mode) => set({ mode }),
 
   setStatus: (status, statusMessage = '') => set({ status, statusMessage }),
+
+  setDbProvider: (dbProvider) => set({ dbProvider }),
+
+  setAuthProvider: (authProvider) => set({ authProvider }),
 
   addMessage: (message) =>
     set((state) => ({

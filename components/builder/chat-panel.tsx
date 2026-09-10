@@ -27,7 +27,7 @@ function PanelToggleIcon({ mirrored = false }: { mirrored?: boolean }) {
   );
 }
 import { useProjectStore, TimelineStep } from '@/lib/store/project-store';
-import { extractStreamingState } from '@/lib/ai/code-parser';
+import { extractStreamingState, parseFinalOutput } from '@/lib/ai/code-parser';
 import { SUGGESTED_PROMPTS } from '@/lib/ai/prompt-templates';
 import { V0Stepper } from './v0-stepper';
 
@@ -44,6 +44,8 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     files,
     setFiles,
     framework,
+    dbProvider,
+    authProvider,
     addLog,
     setActiveFile,
     streamingFile,
@@ -64,97 +66,93 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, status, activeSteps]);
 
-  // Detect if the user wants to BUILD something vs casual chat
-  const isBuildIntent = (q: string): boolean => {
-    const buildPatterns = /\b(build|create|make|design|generate|develop|code|write|add|fix|update|change|modify|refactor|implement|setup|configure|deploy|show me|give me)\b/i;
-    const appPatterns = /\b(app|website|site|page|landing|dashboard|saas|portfolio|store|shop|blog|form|api|backend|server|component|feature|button|navbar|hero|footer|modal|table|chart|list|card)\b/i;
-    // If it matches a build verb OR mentions an app-related noun with any intent
-    return buildPatterns.test(q) || (appPatterns.test(q) && q.length > 20);
-  };
-
   const handleSubmit = async (promptText: string) => {
     const query = promptText.trim();
     if (!query || status === 'generating') return;
 
     setInput('');
     onGenerateStart?.();
-
-    // Add user message
     addMessage({ role: 'user', content: query });
 
-    const isBuild = isBuildIntent(query);
+    // Detect intent — AI agent handles both chat and build
+    const hasBuildVerb = /\b(build|create|make|design|generate|develop|add|fix|update|modify|refactor|implement)\b/i.test(query);
+    const hasAppNoun = /\b(app|website|site|page|landing|dashboard|saas|portfolio|store|blog|form|api|backend|component|navbar|hero|footer|modal)\b/i.test(query);
+    const isBuild = hasBuildVerb || (hasAppNoun && query.length > 20);
+    const isNewBuild = Object.keys(files).length === 0 || /^(build|create|make|design|generate)\s/i.test(query);
 
     // ── CONVERSATION MODE ─────────────────────────────────────
     if (!isBuild) {
       setStatus('generating', 'Thinking...');
       try {
-        const response = await fetch('/api/chat', {
+        const response = await fetch('/api/agent', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: query,
             history: messages.map((m) => ({ role: m.role, content: m.content })),
+            framework,
+            dbProvider,
+            authProvider,
+            mode: 'chat',
           }),
         });
         if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
-
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        let chatReply = '';
+        let reply = '';
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          chatReply += decoder.decode(value, { stream: true });
+          reply += decoder.decode(value, { stream: true });
         }
-
-        addMessage({ role: 'assistant', content: chatReply.trim() });
+        addMessage({ role: 'assistant', content: reply.trim() });
         setStatus('idle');
       } catch (err: any) {
-        addMessage({ role: 'assistant', content: `Sorry, I had trouble connecting. Try again!` });
+        addMessage({ role: 'assistant', content: 'Sorry, I had trouble connecting. Try again!' });
         setStatus('idle');
       }
       return;
     }
 
-    // ── BUILD MODE ───────────────────────────────────────────
-    setStatus('generating', 'Generating fullstack code with Gemini...');
+    // ── BUILD MODE ────────────────────────────────────────────
+    setStatus('generating', 'AI is building your project...');
     setIsStreaming(true);
-    addLog(`[AI] Generating: "${query.slice(0, 60)}..."`);
+    addLog(`[AI] Building: "${query.slice(0, 60)}..."`);
 
-    // Initialize v0-style dynamic steps
-    const initialSteps: TimelineStep[] = [
-      { id: 'thought-1', type: 'thought', label: 'Thought for 1s', duration: '1s', status: 'completed' },
-      { id: 'inspect-1', type: 'inspect', label: 'Inspected project structure', status: 'completed' },
-      { id: 'design-1', type: 'design', label: 'Created design direction', status: 'completed' },
-    ];
-    setActiveSteps(initialSteps);
-
-    // Fresh build only when explicitly building something new with no files yet
-    const isNewBuild =
-      Object.keys(files).length === 0 ||
-      /^(build|create|make|design|generate)\s/i.test(query);
+    // Real dynamic timeline — starts with "Analyzing" only
+    const analyzeStep: TimelineStep = {
+      id: 'analyze-1',
+      type: 'thought',
+      label: `Analyzing request for ${framework.toUpperCase()}...`,
+      status: 'running',
+    };
+    setActiveSteps([analyzeStep]);
 
     try {
-      const response = await fetch('/api/generate', {
+      const response = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: query,
-          framework,
+          message: query,
           history: messages.map((m) => ({ role: m.role, content: m.content })),
-          currentFiles: isNewBuild ? {} : files,
+          files: isNewBuild ? {} : files,
+          framework,
+          dbProvider,
+          authProvider,
+          mode: 'build',
         }),
       });
 
-      if (!response.ok || !response.body) {
-        throw new Error(`HTTP error ${response.status}`);
-      }
+      if (!response.ok || !response.body) throw new Error(`HTTP error ${response.status}`);
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let accumulatedText = '';
-      let currentSteps = [...initialSteps];
+      let currentSteps: TimelineStep[] = [
+        { ...analyzeStep, status: 'completed', label: `Analyzed request for ${framework.toUpperCase()}` },
+      ];
       let trackedFiles = new Set<string>();
+      let planningStepAdded = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -163,6 +161,20 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         const chunk = decoder.decode(value, { stream: true });
         accumulatedText += chunk;
 
+        // Add "Planning architecture" step once first tokens arrive
+        if (!planningStepAdded && accumulatedText.length > 50) {
+          planningStepAdded = true;
+          const planStep: TimelineStep = {
+            id: 'plan-1',
+            type: 'inspect',
+            label: `Planning ${framework} architecture...`,
+            status: 'completed',
+          };
+          currentSteps = [...currentSteps, planStep];
+          setActiveSteps(currentSteps);
+        }
+
+        // Streaming file detection — update steps as files are written
         const { files: parsedFiles, currentStreamingFile } = extractStreamingState(accumulatedText);
 
         if (Object.keys(parsedFiles).length > 0) {
@@ -177,7 +189,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
               const fileStep: TimelineStep = {
                 id: `step-${currentStreamingFile}`,
                 type: 'file',
-                label: `Built ${currentStreamingFile.replace(/^components\//, '')}`,
+                label: `Creating ${currentStreamingFile.split('/').pop()}`,
                 file: currentStreamingFile,
                 status: 'running',
               };
@@ -188,38 +200,43 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         }
       }
 
-      // Final parse
-      const { files: finalFiles } = extractStreamingState(accumulatedText);
+      // ── Final parse — prefer <FILES> JSON, fallback to markdown ──
+      const { files: finalFiles, aiExplanation } = parseFinalOutput(accumulatedText);
+
       if (Object.keys(finalFiles).length > 0) {
         setFiles(isNewBuild ? finalFiles : { ...files, ...finalFiles });
-        if (finalFiles['app/page.tsx']) setActiveFile('app/page.tsx');
-        addLog(`[AI] Successfully parsed ${Object.keys(finalFiles).length} project files.`);
+        // Auto-select entry file based on framework
+        const entryFile = finalFiles['app/page.tsx'] ? 'app/page.tsx'
+          : finalFiles['src/App.tsx'] ? 'src/App.tsx'
+          : finalFiles['src/pages/index.astro'] ? 'src/pages/index.astro'
+          : Object.keys(finalFiles)[0];
+        if (entryFile) setActiveFile(entryFile);
+        addLog(`[AI] Parsed ${Object.keys(finalFiles).length} files via ${accumulatedText.includes('<FILES>') ? 'JSON' : 'markdown'} parser.`);
       }
 
+      // Mark all file steps as completed with line counts
       const finalSteps: TimelineStep[] = currentSteps.map((step) => {
         if (step.file && finalFiles[step.file]) {
           const lines = finalFiles[step.file].split('\n').length;
-          return { ...step, status: 'completed', linesAdded: lines };
+          return { ...step, status: 'completed', label: `Built ${step.file.split('/').pop()}`, linesAdded: lines };
         }
         return { ...step, status: 'completed' };
       });
-
-      finalSteps.push({ id: 'preview-checked', type: 'preview', label: 'Checked preview', status: 'completed' });
+      finalSteps.push({ id: 'preview-checked', type: 'preview', label: 'Preview ready', status: 'completed' });
 
       setActiveSteps(finalSteps);
       setIsStreaming(false);
       setStreamingFile(null);
 
+      // Use AI explanation if available, else generate a brief summary
       const fileList = Object.keys(finalFiles);
-      const summaryText =
-        `Built modern ${framework.toUpperCase()} application with:\n` +
-        `• ${fileList.length} modular components and utilities\n` +
-        `• Clean responsive Tailwind CSS design system\n` +
-        `• Interactive state management and animations`;
+      const responseContent = aiExplanation && aiExplanation.length > 20
+        ? aiExplanation
+        : `Built ${framework.toUpperCase()} project with ${fileList.length} files: ${fileList.slice(0, 4).map(f => f.split('/').pop()).join(', ')}${fileList.length > 4 ? '...' : ''}.`;
 
       addMessage({
         role: 'assistant',
-        content: summaryText,
+        content: responseContent,
         steps: finalSteps,
         filesGenerated: fileList,
         showPreview: true,
@@ -234,10 +251,11 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       addLog(`[Error] ${err?.message || 'Generation failed'}`);
       addMessage({
         role: 'assistant',
-        content: `❌ Error generating code: ${err?.message || 'Please check your connection and API key.'}`,
+        content: `❌ Error: ${err?.message || 'Please check your connection and API key.'}`,
       });
     }
   };
+
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

@@ -1,203 +1,199 @@
-/**
+﻿/**
  * AI System Prompt & Template Configurations
- * Hybrid Fullstack Architecture - distributed frontend and backend execution
+ * Unified AI Agent — supports conversation, code generation, and file editing
  */
 
-export function getSystemPrompt(framework: string = 'nextjs'): string {
-  return `You are Opendork, an elite fullstack AI software engineer and modern UI designer.
-You help users build web applications AND answer their questions conversationally.
+// ─── Framework-specific file structure guides ──────────────────────────────
 
-### 🔄 DUAL-MODE BEHAVIOR (READ CAREFULLY):
+const NEXTJS_STRUCTURE = `
+### FRAMEWORK: Next.js 15 (App Router)
+Generate files in this structure:
+- app/page.tsx        — main page (entry, use 'use client')
+- app/layout.tsx      — root layout with <html> and metadata
+- app/globals.css     — global styles (optional)
+- components/         — all React components
+- lib/utils.ts        — utility helpers (cn, etc.)
+- package.json        — dependencies
+NEVER generate src/App.tsx, src/main.tsx, or vite.config.ts for Next.js projects.`;
 
-**CONVERSATION MODE** — Use this when the user is NOT asking you to build/create something:
-- Greetings ("hi", "hello", "hey") → Respond warmly and briefly. Example: "Hey! I'm Opendork. Ready to build something amazing? Describe your app!"
-- Questions ("what can you do?", "how does this work?") → Answer clearly in plain text
-- Thanks / feedback → Acknowledge and offer help
-- Unclear intent → Ask a clarifying question
-- ⚠️ DO NOT generate any code blocks or file outputs in this mode
+const VITE_STRUCTURE = `
+### FRAMEWORK: Vite + React
+Generate files in this structure:
+- src/App.tsx         — root app component (entry)
+- src/main.tsx        — ReactDOM.createRoot entry point
+- src/components/     — all React components
+- src/lib/utils.ts    — utility helpers
+- index.html          — HTML entry with <div id="root">
+- vite.config.ts      — Vite configuration
+- package.json        — dependencies
+NEVER generate app/page.tsx or app/layout.tsx for Vite projects.`;
 
-**BUILD MODE** — Use this when the user asks you to build, create, make, design, generate, fix, update, or add something:
-- Generate complete multi-file project as described below
-- Always output code using the \`\`\`filename=... format
+const ASTRO_STRUCTURE = `
+### FRAMEWORK: Astro
+Generate files in this structure:
+- src/pages/index.astro     — main page
+- src/layouts/Layout.astro  — base layout
+- src/components/           — .astro or .tsx components
+- astro.config.mjs          — Astro configuration
+- package.json              — dependencies
+NEVER generate Next.js app/ structure for Astro projects.`;
 
-### ⚠️ MANDATORY MULTI-FILE ARCHITECTURE RULES (CRITICAL):
-1. ALWAYS generate a complete multi-file project with at least 5 to 8 separate files.
-   NEVER put all code into a single file! Distribute logic cleanly into modular components.
-2. Every single component imported in \`app/page.tsx\` MUST be generated in full in its own code block.
-   NEVER import a component that you do not generate!
-3. NEVER use placeholders like "// TODO", "// implement later", or "...". Write 100% complete, runnable code.
-4. Use standard Tailwind CSS utilities for responsive design, rich colors, and smooth micro-interactions.
-5. Use Lucide React icons (\`lucide-react\`) for rich visual affordance.
-6. Make components interactive using React hooks (\`useState\`, \`useEffect\`). Include working tabs, toggles, filter states, and realistic mock data.
+const NODEJS_STRUCTURE = `
+### FRAMEWORK: Node.js Backend
+Generate files in this structure:
+- src/server.ts       — Express/Fastify server entry
+- src/routes/         — API route handlers
+- src/controllers/    — business logic controllers
+- src/services/       — data access services
+- src/middleware/     — auth, validation middleware
+- src/types/          — TypeScript interfaces
+- package.json        — dependencies with typescript, ts-node
+- tsconfig.json       — TypeScript config
+NEVER generate React/frontend files for Node.js backend projects.`;
 
-### REQUIRED FILE STRUCTURE & GENERATION ORDER:
-You MUST generate all of the following files in this exact order:
-
-1. \`app/page.tsx\` - PRIMARY ENTRY COMPONENT (GENERATE THIS FIRST so the live preview renders immediately!):
-\`\`\`tsx filename=app/page.tsx
-'use client';
-
-import React from 'react';
-import { Navbar } from '@/components/Navbar';
-import { Hero } from '@/components/Hero';
-import { Features } from '@/components/Features';
-import { Pricing } from '@/components/Pricing';
-import { Footer } from '@/components/Footer';
-
-export default function Home() {
-  return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
-      <Navbar />
-      <Hero />
-      <Features />
-      <Pricing />
-      <Footer />
-    </main>
-  );
-}
-\`\`\`
-
-2. \`app/layout.tsx\` - Root layout shell with HTML, fonts, and global metadata:
-\`\`\`tsx filename=app/layout.tsx
-import React from 'react';
-
-export const metadata = {
-  title: 'Modern Web Application',
-  description: 'Generated with Opendork AI',
+const FRAMEWORK_GUIDES: Record<string, string> = {
+  nextjs: NEXTJS_STRUCTURE,
+  vite: VITE_STRUCTURE,
+  astro: ASTRO_STRUCTURE,
+  nodejs: NODEJS_STRUCTURE,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en">
-      <body className="min-h-screen bg-zinc-950 text-zinc-100 antialiased font-sans">
-        {children}
-      </body>
-    </html>
-  );
-}
-\`\`\`
+// ─── Database & Auth templates ────────────────────────────────────────────
 
-3. \`lib/utils.ts\` - Classnames merging utility:
-\`\`\`ts filename=lib/utils.ts
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+const DB_GUIDES: Record<string, string> = {
+  supabase: `
+### DATABASE: Supabase
+Generate these additional files:
+- supabase/migrations/001_initial_schema.sql  — CREATE TABLE statements with RLS
+- supabase/seed.sql                           — seed data
+- lib/supabase.ts                             — createClient() setup
+- .env.example                               — NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
+Never hardcode API keys in source files.`,
 
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-\`\`\`
+  mysql: `
+### DATABASE: MySQL
+Generate these additional files:
+- database/schema.sql    — CREATE TABLE statements
+- database/seed.sql      — INSERT seed data
+- lib/db.ts             — mysql2 connection pool
+- .env.example           — DATABASE_URL=mysql://user:pass@localhost:3306/dbname`,
 
-4. \`components/Navbar.tsx\` - Responsive top navigation bar with logo, links, and action buttons.
-5. \`components/Hero.tsx\` - High-converting hero section with headline, badge, CTA buttons, and feature preview.
-6. \`components/Features.tsx\` - Core feature grid or domain-specific dashboard with Lucide icons.
-7. \`components/Pricing.tsx\` (or domain-specific main component like \`components/Dashboard.tsx\`, \`components/TransactionList.tsx\`, \`components/ProductGrid.tsx\`, etc.) - Interactive section with state/tabs.
-8. \`components/Footer.tsx\` - Polished footer with links, copyright, and social icons.
+  postgres: `
+### DATABASE: PostgreSQL
+Generate these additional files:
+- database/schema.sql    — CREATE TABLE statements
+- database/seed.sql      — seed data
+- lib/db.ts             — pg Pool setup
+- .env.example           — DATABASE_URL=postgresql://...`,
 
-9. \`package.json\` - Project dependencies and scripts:
-\`\`\`json filename=package.json
-{
-  "name": "app",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "next": "^15.1.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "lucide-react": "^0.454.0",
-    "clsx": "^2.1.1",
-    "tailwind-merge": "^2.6.0"
-  }
-}
-\`\`\`
+  prisma: `
+### ORM: Prisma
+Generate these additional files:
+- prisma/schema.prisma   — complete data model
+- lib/prisma.ts         — PrismaClient singleton
+- .env.example           — DATABASE_URL`,
 
-### 🌐 FULLSTACK & BACKEND API ARCHITECTURE (WHEN API / BACKEND IS NEEDED):
-If the user's prompt involves backend API, database storage, forms submission, or real-time endpoints:
-Also generate a lightweight Node.js \`server.js\` file:
-\`\`\`js filename=server.js
-const http = require('http');
+  drizzle: `
+### ORM: Drizzle
+Generate these additional files:
+- src/db/schema.ts       — Drizzle table definitions
+- src/db/index.ts        — db connection
+- drizzle.config.ts      — Drizzle config
+- .env.example           — DATABASE_URL`,
+};
 
-let db = [
-  { id: 1, title: 'Welcome to Opendork API', completed: false }
-];
+// ─── Main system prompt ────────────────────────────────────────────────────
 
-const server = http.createServer((req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+export function getSystemPrompt(
+  framework: string = 'nextjs',
+  dbProvider: string = 'none',
+  authProvider: string = 'none',
+  mode: 'build' | 'chat' | 'edit' = 'build'
+): string {
+  const frameworkGuide = FRAMEWORK_GUIDES[framework] || FRAMEWORK_GUIDES['nextjs'];
+  const dbGuide = DB_GUIDES[dbProvider] || '';
 
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
+  if (mode === 'chat') {
+    return `You are Opendork, a friendly AI assistant for a fullstack web app builder.
+Answer the user conversationally, helpfully, and concisely.
+If the user wants to build something, ask clarifying questions about framework, database, and features.
+Do NOT generate any code files or use the filename= code block format.`;
   }
 
-  const url = new URL(req.url, \`http://\${req.headers.host || 'localhost'}\`);
+  if (mode === 'edit') {
+    return `You are Opendork, an expert software engineer.
+The user wants you to modify a specific file in their project.
+Return ONLY the complete updated file content — no explanation before it.
+Use the exact output format:
 
-  if (url.pathname === '/api/data' && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ data: db }));
-    return;
+<FILES>
+{"files":[{"path":"<filepath>","content":"<complete updated file content>"}]}
+</FILES>
+
+After the FILES block, briefly explain what you changed in 1-2 sentences.`;
   }
 
-  if (url.pathname === '/api/data' && req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      try {
-        const item = JSON.parse(body);
-        item.id = Date.now();
-        db.push(item);
-        res.writeHead(201, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, item }));
-      } catch (err) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Invalid JSON' }));
-      }
-    });
-    return;
-  }
+  // BUILD mode (default)
+  return `You are Opendork, an elite fullstack AI software engineer and UI designer.
+You build complete, production-ready web applications.
 
-  res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'Not found' }));
-});
+${frameworkGuide}
+${dbGuide}
 
-server.listen(3000, '0.0.0.0', () => {
-  console.log('Backend API running on port 3000');
-});
+### ⚠️ CRITICAL GENERATION RULES:
+1. Generate ALL required files — minimum 5-8 files for frontend projects.
+2. Every imported component MUST be generated. NEVER import something you don't create.
+3. NEVER use placeholders like "// TODO" or "// implement later". Write 100% complete code.
+4. Use Tailwind CSS for styling. Use lucide-react for icons.
+5. Make components interactive with useState, useEffect, realistic mock data.
+6. ${authProvider !== 'none' ? `Include ${authProvider} authentication — login, register, protected routes.` : ''}
+
+### OUTPUT FORMAT — MANDATORY:
+
+Step 1: Stream each file as a markdown code block for live preview:
+\`\`\`tsx filename=app/page.tsx
+// complete file content
 \`\`\`
 
-### OUTPUT FORMAT SPECIFICATION:
-- Every file MUST be emitted inside a markdown code fence with \`filename=path/to/file.ext\`:
-  \`\`\`tsx filename=components/Navbar.tsx
-  // Complete code here
-  \`\`\`
-- Output each file sequentially. Ensure every component is self-contained and runnable.
-`;
+Step 2: After ALL files, output a structured JSON block for reliable parsing:
+
+<FILES>
+{"files":[
+  {"path":"app/page.tsx","content":"complete content here"},
+  {"path":"components/Navbar.tsx","content":"complete content here"}
+]}
+</FILES>
+
+Step 3: After the FILES block, write 2-3 sentences explaining what you built, what features it has, and how to get started. This will be shown to the user as your response.
+
+### IMPORTANT:
+- The <FILES> block must contain EVERY file you generated with COMPLETE content.
+- JSON must be valid — escape newlines as \\n, quotes as \\".
+- Never truncate file content inside the JSON block.
+- Framework: ${framework.toUpperCase()} — respect this. Do not substitute another framework.`;
 }
+
+// ─── Suggested prompts ────────────────────────────────────────────────────
 
 export const SUGGESTED_PROMPTS = [
   {
     title: 'SaaS Landing Page',
     description: 'Modern AI platform with hero, pricing tiers, feature grid, and testimonials',
-    prompt: 'Build a high-converting, modern SaaS landing page for an AI voice agent platform with a dark theme, gradient badges, pricing table with billing toggle, interactive FAQ accordion, and testimonial carousel using Next.js and Tailwind CSS.'
+    prompt: 'Build a high-converting SaaS landing page for an AI voice agent platform. Dark theme, gradient badges, pricing table with billing toggle, FAQ accordion, and testimonial carousel.'
   },
   {
-    title: 'Fullstack Task Manager with API',
-    description: 'Complete task board with backend API routes, CRUD persistence, and filter tabs',
-    prompt: 'Build a fullstack Kanban Task Manager with interactive drag-like cards, category filters, and a server.js backend API providing /api/data endpoints for creating, updating, and deleting tasks.'
+    title: 'Fullstack Task Manager',
+    description: 'Complete task board with Supabase backend, CRUD, and filter tabs',
+    prompt: 'Build a fullstack Kanban Task Manager with Supabase database. Include drag-like cards, category filters, task creation modal, and real-time updates.'
   },
   {
-    title: 'Crypto & Web3 Portfolio',
-    description: 'Live price ticker, asset tracker, wallet connection mockup, and transaction history',
-    prompt: 'Build a sleek Web3 & Crypto Portfolio Tracker dashboard with live asset charts, wallet balance cards, transaction history table with search/filter, and buy/sell modal.'
+    title: 'Crypto Portfolio Tracker',
+    description: 'Live price ticker, asset tracker, wallet mockup, transaction history',
+    prompt: 'Build a Web3 Crypto Portfolio Tracker dashboard with live asset charts, wallet balance cards, transaction history table with search/filter, and buy/sell modal.'
   },
   {
     title: 'E-commerce Storefront',
-    description: 'Product catalog, category filters, shopping cart drawer, and checkout flow',
-    prompt: 'Build a modern minimalist e-commerce storefront for artisanal mechanical keyboards with product grid, category tabs, cart slide-over drawer with price calculation, and quick-view modal.'
+    description: 'Product catalog, category filters, shopping cart, and checkout flow',
+    prompt: 'Build a modern e-commerce storefront for artisanal mechanical keyboards with product grid, category tabs, cart slide-over drawer with price calculation, and quick-view modal.'
   }
 ];
