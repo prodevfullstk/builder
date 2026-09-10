@@ -55,12 +55,6 @@ export function BuilderHeader() {
           </span>
         </Link>
 
-        {/* Fullstack Project Badge */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono bg-zinc-900/80 text-zinc-300 border border-zinc-800">
-          <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-          <span>Fullstack Project</span>
-        </div>
-
         {/* Status indicator */}
         <div className="flex items-center gap-2">
           <Badge
