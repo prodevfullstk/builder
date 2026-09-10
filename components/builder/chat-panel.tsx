@@ -3,7 +3,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Send,
-  Sparkles,
   Loader2,
 } from 'lucide-react';
 
@@ -225,7 +224,6 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       {/* Panel Header */}
       <div className="h-9 px-3 border-b border-zinc-800 flex items-center justify-between text-zinc-400 font-semibold uppercase tracking-wider text-[10px]">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-3.5 h-3.5 text-blue-400" />
           {!isMinimized && <span>AI Builder Assistant</span>}
         </div>
         <button
