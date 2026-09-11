@@ -3,6 +3,8 @@
  * Unified AI Agent — supports conversation, code generation, and file editing
  */
 
+import { getFullStackDBGuide, DBProvider, AuthProvider } from './database-templates';
+
 // ─── Framework-specific file structure guides ──────────────────────────────
 
 const NEXTJS_STRUCTURE = `
@@ -57,11 +59,6 @@ const FRAMEWORK_GUIDES: Record<string, string> = {
   astro: ASTRO_STRUCTURE,
   nodejs: NODEJS_STRUCTURE,
 };
-
-// ─── Database & Auth templates ────────────────────────────────────────────
-// Delegated to database-templates.ts for richer, dedicated DB/auth support
-
-import { getFullStackDBGuide, DBProvider, AuthProvider } from './database-templates';
 
 // ─── Main system prompt ────────────────────────────────────────────────────
 

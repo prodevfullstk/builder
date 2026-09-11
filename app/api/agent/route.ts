@@ -1,8 +1,8 @@
-﻿import { NextRequest } from "next/server";
+import { NextRequest } from "next/server";
 import { createGeminiStream } from "@/lib/ai/gemini-stream";
 import { getSystemPrompt } from "@/lib/ai/prompt-templates";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
@@ -56,7 +56,6 @@ User instruction: ${message}`;
         { role: "system", content: systemPrompt },
         ...history.slice(-6),
       ],
-      currentFiles: {},
     });
 
     return new Response(stream, {

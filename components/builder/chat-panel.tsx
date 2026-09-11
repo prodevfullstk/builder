@@ -39,6 +39,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
   const {
     messages,
     addMessage,
+    updateStreamingMessage,
     status,
     setStatus,
     files,
@@ -78,11 +79,18 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     const hasBuildVerb = /\b(build|create|make|design|generate|develop|add|fix|update|modify|refactor|implement)\b/i.test(query);
     const hasAppNoun = /\b(app|website|site|page|landing|dashboard|saas|portfolio|store|blog|form|api|backend|component|navbar|hero|footer|modal)\b/i.test(query);
     const isBuild = hasBuildVerb || (hasAppNoun && query.length > 20);
-    const isNewBuild = Object.keys(files).length === 0 || /^(build|create|make|design|generate)\s/i.test(query);
+    // BUG4 fix: only wipe existing files when truly starting from scratch
+    // "create a navbar" / "add a hero section" should NOT wipe the project
+    const hasExistingFiles = Object.keys(files).length > 0;
+    const isExplicitRebuild = /^(rebuild|start over|start fresh|from scratch|reset|clear project|new project)/i.test(query.trim());
+    const isNewBuild = !hasExistingFiles || isExplicitRebuild;
 
     // ── CONVERSATION MODE ─────────────────────────────────────
     if (!isBuild) {
       setStatus('generating', 'Thinking...');
+      // ISSUE9 fix: stream chat replies token-by-token
+      // Add a placeholder message immediately with empty content
+      let streamContent = '';
       try {
         const response = await fetch('/api/agent', {
           method: 'POST',
@@ -99,16 +107,28 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        let reply = '';
+
+        // Add live streaming message — update it chunk by chunk
+        addMessage({ role: 'assistant', content: '…' });
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          reply += decoder.decode(value, { stream: true });
+          streamContent += decoder.decode(value, { stream: true });
+          // Update the last assistant message with current streamed content
+          updateStreamingMessage(streamContent);
         }
-        addMessage({ role: 'assistant', content: reply.trim() });
+        // Final flush
+        const flushed = decoder.decode();
+        if (flushed) streamContent += flushed;
+        updateStreamingMessage(streamContent.trim());
         setStatus('idle');
       } catch (err: any) {
-        addMessage({ role: 'assistant', content: 'Sorry, I had trouble connecting. Try again!' });
+        if (streamContent) {
+          updateStreamingMessage(streamContent.trim() || 'Sorry, I had trouble connecting. Try again!');
+        } else {
+          addMessage({ role: 'assistant', content: 'Sorry, I had trouble connecting. Try again!' });
+        }
         setStatus('idle');
       }
       return;
@@ -201,7 +221,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       }
 
       // ── Final parse — prefer <FILES> JSON, fallback to markdown ──
-      const { files: finalFiles, aiExplanation } = parseFinalOutput(accumulatedText);
+      const { files: finalFiles, aiExplanation, parseError } = parseFinalOutput(accumulatedText);
 
       if (Object.keys(finalFiles).length > 0) {
         setFiles(isNewBuild ? finalFiles : { ...files, ...finalFiles });
@@ -211,7 +231,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
           : finalFiles['src/pages/index.astro'] ? 'src/pages/index.astro'
           : Object.keys(finalFiles)[0];
         if (entryFile) setActiveFile(entryFile);
-        addLog(`[AI] Parsed ${Object.keys(finalFiles).length} files via ${accumulatedText.includes('<FILES>') ? 'JSON' : 'markdown'} parser.`);
+        addLog(`[AI] Parsed ${Object.keys(finalFiles).length} files (${parseError ? 'markdown fallback' : accumulatedText.includes('<FILES>') ? 'JSON block' : 'markdown'}).`);
       }
 
       // Mark all file steps as completed with line counts

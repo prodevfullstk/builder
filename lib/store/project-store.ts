@@ -70,6 +70,7 @@ export interface ProjectState {
   setDbProvider: (db: ProjectState['dbProvider']) => void;
   setAuthProvider: (auth: ProjectState['authProvider']) => void;
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
+  updateStreamingMessage: (content: string) => void;
   updateLastMessageScreenshot: (screenshot: string) => void;
   requestCreateFile: () => void;
   addLog: (log: string) => void;
@@ -169,6 +170,18 @@ export const useProjectStore = create<ProjectState>((set) => ({
         },
       ],
     })),
+
+  updateStreamingMessage: (content) =>
+    set((state) => {
+      const msgs = [...state.messages];
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === 'assistant') {
+          msgs[i] = { ...msgs[i], content };
+          break;
+        }
+      }
+      return { messages: msgs };
+    }),
 
   updateLastMessageScreenshot: (screenshot) =>
     set((state) => {

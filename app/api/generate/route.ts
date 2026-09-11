@@ -1,45 +1,34 @@
-import { NextRequest } from 'next/server';
-import { createGeminiStream } from '@/lib/ai/gemini-stream';
+﻿/**
+ * Legacy route: /api/generate
+ * Re-routes directly to /api/agent for unified agent processing
+ */
+import { NextRequest } from "next/server";
+import { POST as agentPost, maxDuration, dynamic } from "../agent/route";
 
-export const maxDuration = 60;
-export const dynamic = 'force-dynamic';
+export { maxDuration, dynamic };
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { prompt, framework, history, currentFiles } = body;
+    const forwardBody = {
+      message: body.prompt || body.message || "",
+      framework: body.framework || "nextjs",
+      history: body.history || [],
+      files: body.currentFiles || body.files || {},
+      mode: "build",
+    };
 
-    if (!prompt || typeof prompt !== 'string') {
-      return new Response(JSON.stringify({ error: 'Prompt is required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    const stream = await createGeminiStream({
-      prompt,
-      framework: framework || 'nextjs',
-      history: history || [],
-      currentFiles: currentFiles || {},
+    const nextReq = new NextRequest(req.url, {
+      method: "POST",
+      headers: req.headers,
+      body: JSON.stringify(forwardBody),
     });
 
-    return new Response(stream, {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
-        'X-Content-Type-Options': 'nosniff',
-        'Connection': 'keep-alive',
-      },
+    return agentPost(nextReq);
+  } catch (err: any) {
+    return new Response(JSON.stringify({ error: err?.message || "Failed" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
     });
-  } catch (error: any) {
-    console.error('API /api/generate error:', error);
-    return new Response(
-      JSON.stringify({ error: error?.message || 'Failed to generate code' }),
-      {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    );
   }
 }

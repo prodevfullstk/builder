@@ -1,6 +1,10 @@
-/**
+﻿/**
  * Gemini AI Streaming Client
- * Supports the new /api/agent unified endpoint with full context passing
+ * Fixes applied:
+ *  - BUG6: System prompt always at position[0], never dropped by sliding window
+ *  - BUG8: TextDecoder final flush after read loop
+ *  - ISSUE11: Removed dead `currentFiles` parameter (context is embedded in prompt by /api/agent)
+ *  - ISSUE15: AbortController 45s timeout per model attempt
  */
 
 import { getSystemPrompt } from "./prompt-templates";
@@ -14,7 +18,6 @@ export interface StreamGenerationOptions {
   prompt: string;
   framework?: string;
   history?: ChatMessagePayload[];
-  currentFiles?: Record<string, string>;
 }
 
 const CANDIDATE_MODELS = [
@@ -25,27 +28,72 @@ const CANDIDATE_MODELS = [
   "gemini-3.6-flash",
 ];
 
-/** Retry fetch up to maxRetries times on 503 errors */
+/** Retry fetch up to maxRetries times on 503 errors, with per-attempt AbortController timeout */
 async function fetchWithRetry(
   url: string,
   options: RequestInit,
   maxRetries = 3,
-  delayMs = 1200
+  delayMs = 1200,
+  timeoutMs = 45000
 ): Promise<Response> {
   let lastRes: Response | null = null;
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    lastRes = await fetch(url, options);
+    // ISSUE15 fix: abort if no response within timeoutMs
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      lastRes = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timeoutId);
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err?.name === "AbortError") {
+        throw new Error(`Request timed out after ${timeoutMs / 1000}s`);
+      }
+      throw err;
+    }
+
     if (lastRes.status !== 503 || attempt === maxRetries) return lastRes;
     await new Promise((r) => setTimeout(r, delayMs * (attempt + 1)));
   }
   return lastRes!;
 }
 
+/**
+ * BUG6 fix: Build message array ensuring system prompt is ALWAYS first,
+ * independent of conversation length sliding window.
+ */
+function buildMessages(
+  history: ChatMessagePayload[],
+  prompt: string,
+  framework: string
+): ChatMessagePayload[] {
+  // Separate system prompt from conversation turns
+  const systemMessage = history.find((m) => m.role === "system");
+  const conversationTurns = history.filter((m) => m.role !== "system");
+
+  // Always keep system at position 0; slide only conversation window
+  if (systemMessage) {
+    return [
+      systemMessage,                        // system always first
+      ...conversationTurns.slice(-7),       // last 7 turns max (3.5 exchanges)
+      { role: "user", content: prompt },
+    ];
+  }
+
+  // No system prompt provided — inject fallback (e.g. called from old /api/generate)
+  return [
+    { role: "system", content: getSystemPrompt(framework, "none", "none", "build") },
+    ...conversationTurns.slice(-6),
+    { role: "user", content: prompt },
+  ];
+}
+
 export async function createGeminiStream({
   prompt,
   framework = "nextjs",
   history = [],
-  currentFiles = {},
 }: StreamGenerationOptions): Promise<ReadableStream<Uint8Array>> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -57,23 +105,7 @@ export async function createGeminiStream({
     "https://generativelanguage.googleapis.com/v1beta/openai";
   const endpoint = `${apiUrl}/chat/completions`;
 
-  // Build messages:
-  // - If /api/agent already injected a system prompt into history → use it as-is
-  // - If called directly (e.g. /api/generate) with no system prompt → inject fallback
-  const hasSystemInHistory = history.some((m) => m.role === "system");
-
-  const messages: ChatMessagePayload[] = hasSystemInHistory
-    ? [
-        // System prompt is already first in history from /api/agent
-        ...history.slice(-8),
-        { role: "user", content: prompt },
-      ]
-    : [
-        // Fallback: inject framework-specific system prompt
-        { role: "system", content: getSystemPrompt(framework, "none", "none", "build") },
-        ...history.filter((m) => m.role !== "system").slice(-6),
-        { role: "user", content: prompt },
-      ];
+  const messages = buildMessages(history, prompt, framework);
 
   let response: Response | null = null;
   let lastError = "";
@@ -114,7 +146,8 @@ export async function createGeminiStream({
   }
 
   const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
+  // BUG8 fix: create decoder once, call final flush after loop
+  const decoder = new TextDecoder("utf-8", { fatal: false });
 
   return new ReadableStream({
     async start(controller) {
@@ -139,13 +172,17 @@ export async function createGeminiStream({
                 const content = json.choices?.[0]?.delta?.content;
                 if (content) controller.enqueue(encoder.encode(content));
               } catch {
-                // Partial JSON chunk, skip
+                // Partial JSON chunk — skip silently
               }
             }
           }
         }
 
-        // Flush remaining buffer
+        // BUG8 fix: flush remaining bytes (multi-byte UTF-8 at chunk boundary)
+        const flushed = decoder.decode();
+        if (flushed) buffer += flushed;
+
+        // Process any remaining buffered lines
         if (buffer.trim().startsWith("data: ") && buffer.trim() !== "data: [DONE]") {
           try {
             const json = JSON.parse(buffer.trim().slice(6));

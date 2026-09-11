@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Incremental parser for extracting files from streaming AI responses.
  * Supports two extraction modes:
  *   1. Streaming: markdown code fences (```filename=...) for live typewriter
@@ -24,27 +24,52 @@ export interface StreamingParseResult {
  * Parses the reliable <FILES>...</FILES> JSON block from completed AI responses.
  * This is the primary extraction method — more accurate than markdown fence parsing.
  */
-export function parseStructuredOutput(text: string): Record<string, string> | null {
+/**
+ * Attempt to sanitize the JSON block content when initial parse fails.
+ * Handles common AI mistakes: unescaped newlines inside string values.
+ */
+function sanitizeFilesJSON(raw: string): string {
+  return raw
+    .replace(/\r\n/g, '\\n')
+    .replace(/(?<!\\)\n/g, '\\n')
+    .replace(/(?<!\\)\t/g, '\\t');
+}
+
+export function parseStructuredOutput(text: string): { files: Record<string, string> | null; parseError: boolean } {
   const filesBlockMatch = text.match(/<FILES>\s*([\s\S]*?)\s*<\/FILES>/);
-  if (!filesBlockMatch) return null;
+  if (!filesBlockMatch) return { files: null, parseError: false };
 
-  try {
-    const json = JSON.parse(filesBlockMatch[1].trim());
+  const rawBlock = filesBlockMatch[1].trim();
+
+  const tryParse = (src: string): Record<string, string> | null => {
+    const json = JSON.parse(src);
     if (!json.files || !Array.isArray(json.files)) return null;
-
     const files: Record<string, string> = {};
     for (const item of json.files) {
       if (item.path && typeof item.content === 'string') {
-        // Clean path — no leading slash
-        const cleanPath = item.path.replace(/^\/+/, '');
-        files[cleanPath] = item.content;
+        files[item.path.replace(/^\/+/, '')] = item.content;
       }
     }
     return Object.keys(files).length > 0 ? files : null;
-  } catch {
-    return null;
+  };
+
+  // Attempt 1: direct parse
+  try {
+    return { files: tryParse(rawBlock), parseError: false };
+  } catch { /* fall through */ }
+
+  // Attempt 2: sanitize then parse
+  try {
+    const files = tryParse(sanitizeFilesJSON(rawBlock));
+    console.warn('[Parser] <FILES> JSON required sanitization');
+    return { files, parseError: false };
+  } catch (e2) {
+    console.error('[Parser] <FILES> JSON parse failed after sanitization:', String(e2).slice(0, 200));
+    console.error('[Parser] Failed block (first 300 chars):', rawBlock.slice(0, 300));
+    return { files: null, parseError: true };
   }
 }
+
 
 /**
  * Extracts the AI explanation text that comes after the </FILES> block.
@@ -76,11 +101,13 @@ function resolveFilePath(header: string, content: string, fileIndex: number): st
     if (braceMatch) filePath = braceMatch[1].trim();
   }
 
-  // 4. tsx:components/Navbar.tsx colon format
+  // 4. tsx:components/Navbar.tsx colon format — must look like a real path
   if (!filePath && header.includes(':')) {
     const colonParts = header.split(':');
-    if (colonParts.length >= 2 && colonParts[1].includes('.')) {
-      filePath = colonParts.slice(1).join(':').trim();
+    const candidate = colonParts.slice(1).join(':').trim();
+    // Must be a clean file path: word chars + slashes + dots, no spaces, braces, or brackets
+    if (/^[\w\-./]+\.[a-zA-Z0-9]{1,6}$/.test(candidate)) {
+      filePath = candidate;
     }
   }
 
@@ -159,22 +186,30 @@ export function extractStreamingState(markdown: string): StreamingParseResult {
 /**
  * Final parse — called when streaming completes.
  * Prefers <FILES> JSON block; falls back to markdown fence parsing.
+ * Returns parseError=true if <FILES> block was present but JSON was invalid.
  */
 export function parseFinalOutput(fullText: string): {
   files: Record<string, string>;
   aiExplanation: string | null;
+  parseError: boolean;
 } {
-  // Try structured JSON first (reliable)
-  const structuredFiles = parseStructuredOutput(fullText);
   const aiExplanation = parseAIExplanation(fullText);
 
+  // Try structured JSON first (reliable)
+  const { files: structuredFiles, parseError } = parseStructuredOutput(fullText);
+
   if (structuredFiles && Object.keys(structuredFiles).length > 0) {
-    return { files: structuredFiles, aiExplanation };
+    return { files: structuredFiles, aiExplanation, parseError: false };
+  }
+
+  // If <FILES> block existed but failed to parse, log it
+  if (parseError) {
+    console.warn('[Parser] <FILES> block present but unparseable — falling back to markdown fences');
   }
 
   // Fallback to markdown fence parsing
   const { files } = extractStreamingState(fullText);
-  return { files, aiExplanation };
+  return { files, aiExplanation, parseError };
 }
 
 // Legacy export for backward compatibility
@@ -182,3 +217,4 @@ export function parseFilesFromMarkdown(markdown: string): Record<string, string>
   const { files } = parseFinalOutput(markdown);
   return files;
 }
+
