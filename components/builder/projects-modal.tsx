@@ -35,7 +35,6 @@ export function ProjectsModal({
 }: ProjectsModalProps) {
   const { projectId: currentId } = useProjectStore();
   const [projects, setProjects] = useState<SavedProjectSummary[]>([]);
-  const [newFramework, setNewFramework] = useState<Framework>("nextjs");
   const [projectToDelete, setProjectToDelete] = useState<SavedProjectSummary | null>(null);
 
   const refreshList = () => {
@@ -96,25 +95,15 @@ export function ProjectsModal({
 
         {/* New Project Quick Bar */}
         <div className="px-5 py-3 border-b border-zinc-800/80 bg-zinc-900/30 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-400">Framework:</span>
-            <select
-              value={newFramework}
-              onChange={(e) => setNewFramework(e.target.value as Framework)}
-              className="bg-zinc-900 border border-zinc-700 text-xs text-zinc-200 rounded px-2 py-1 focus:outline-none"
-            >
-              <option value="nextjs">Next.js 15</option>
-              <option value="vite">Vite + React</option>
-              <option value="astro">Astro</option>
-              <option value="nodejs">Node.js API</option>
-            </select>
-          </div>
+          <p className="text-xs text-zinc-400">
+            Start a fresh workspace — AI automatically handles all dependencies.
+          </p>
           <button
             onClick={() => {
-              onNewProject(newFramework);
+              onNewProject();
               onClose();
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-lg transition-colors shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-lg transition-colors shadow-sm shrink-0 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>New Project</span>

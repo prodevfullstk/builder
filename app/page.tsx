@@ -111,8 +111,6 @@ const CURATED_TEMPLATES = [
 export default function HomePage() {
   const router = useRouter();
   const [prompt, setPrompt] = useState('');
-  const [selectedFramework, setSelectedFramework] = useState<Framework>('vite');
-  const [selectedDb, setSelectedDb] = useState<'none' | 'supabase' | 'postgres'>('supabase');
   const [recentProjects, setRecentProjects] = useState<SavedProjectSummary[]>([]);
 
   // Load saved projects on client mount
@@ -120,19 +118,10 @@ export default function HomePage() {
     setRecentProjects(listSavedProjects());
   }, []);
 
-  const handleStartBuilding = (
-    customPrompt?: string,
-    overrideFramework?: Framework,
-    overrideDb?: string
-  ) => {
+  const handleStartBuilding = (customPrompt?: string) => {
     const finalPrompt = (customPrompt || prompt).trim();
-    const fw = overrideFramework || selectedFramework;
-    const db = overrideDb || selectedDb;
-
     const params = new URLSearchParams();
     if (finalPrompt) params.set('prompt', finalPrompt);
-    if (fw) params.set('framework', fw);
-    if (db && db !== 'none') params.set('db', db);
 
     const queryString = params.toString();
     router.push(queryString ? `/builder?${queryString}` : '/builder');
@@ -266,80 +255,17 @@ export default function HomePage() {
               className="w-full bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none resize-none p-1.5 leading-relaxed font-sans"
             />
 
-            {/* Prompt Controls & Stack Pill Selectors */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-zinc-800/80 mt-2">
-              {/* Left selectors: Framework & Database */}
-              <div className="flex flex-wrap items-center gap-2">
-                {/* Framework Selector */}
-                <div className="flex items-center rounded-lg bg-zinc-950/80 border border-zinc-800 p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedFramework('vite')}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
-                      selectedFramework === 'vite'
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'text-zinc-400 hover:text-zinc-200'
-                    }`}
-                  >
-                    ⚡ Vite (React)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedFramework('nextjs')}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
-                      selectedFramework === 'nextjs'
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'text-zinc-400 hover:text-zinc-200'
-                    }`}
-                  >
-                    ▲ Next.js 15
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedFramework('astro')}
-                    className={`px-2 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
-                      selectedFramework === 'astro'
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'text-zinc-400 hover:text-zinc-200'
-                    }`}
-                  >
-                    🚀 Astro
-                  </button>
-                </div>
-
-                {/* Database Selector */}
-                <div className="flex items-center rounded-lg bg-zinc-950/80 border border-zinc-800 p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDb('supabase')}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
-                      selectedDb === 'supabase'
-                        ? 'bg-emerald-600 text-white shadow-sm'
-                        : 'text-zinc-400 hover:text-zinc-200'
-                    }`}
-                  >
-                    <Database className="w-3 h-3" />
-                    <span>Supabase SQL</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDb('none')}
-                    className={`px-2 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
-                      selectedDb === 'none'
-                        ? 'bg-zinc-800 text-zinc-200 shadow-sm'
-                        : 'text-zinc-400 hover:text-zinc-200'
-                    }`}
-                  >
-                    Frontend Only
-                  </button>
-                </div>
-              </div>
+            {/* Prompt Action Bar (Clean & Professional) */}
+            <div className="flex items-center justify-between gap-3 pt-3 border-t border-zinc-800/80 mt-2">
+              <span className="text-[11px] text-zinc-500 font-medium">
+                💡 AI automatically chooses optimal framework & components
+              </span>
 
               {/* Submit CTA */}
               <button
                 type="button"
                 onClick={() => handleStartBuilding()}
-                className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold transition-all shadow-md shadow-blue-900/40 hover:scale-105 cursor-pointer ml-auto"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold transition-all shadow-md shadow-blue-900/40 hover:scale-105 cursor-pointer ml-auto"
               >
                 <span>Build with AI</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -356,9 +282,6 @@ export default function HomePage() {
                 type="button"
                 onClick={() => {
                   setPrompt(cat.prompt);
-                  setSelectedFramework(cat.framework);
-                  if (cat.db !== 'none') setSelectedDb('supabase');
-                  else setSelectedDb('none');
                 }}
                 className="text-xs px-3 py-1.5 rounded-full bg-zinc-900 hover:bg-zinc-800/90 text-zinc-300 hover:text-white border border-zinc-800 hover:border-zinc-700 transition-all shadow-sm cursor-pointer"
               >
@@ -509,9 +432,7 @@ export default function HomePage() {
                 return (
                   <div
                     key={idx}
-                    onClick={() =>
-                      handleStartBuilding(item.prompt, item.framework, item.db)
-                    }
+                    onClick={() => handleStartBuilding(item.prompt)}
                     className="p-4 bg-zinc-900/50 hover:bg-zinc-900 border border-zinc-800/80 hover:border-zinc-700 rounded-xl cursor-pointer transition-all duration-200 group flex flex-col justify-between"
                   >
                     <div>
@@ -526,9 +447,6 @@ export default function HomePage() {
                             {item.badge}
                           </span>
                         </div>
-                        <span className="text-[10px] font-mono text-zinc-500">
-                          {item.framework.toUpperCase()}
-                        </span>
                       </div>
 
                       <h3 className="text-sm font-semibold text-zinc-200 group-hover:text-blue-400 transition-colors mb-1">
@@ -540,9 +458,9 @@ export default function HomePage() {
                     </div>
 
                     <div className="pt-3 border-t border-zinc-800/50 mt-3 flex items-center justify-between text-[11px] text-zinc-500">
-                      <span>Stack: {item.framework} + {item.db}</span>
+                      <span>Ready to customize</span>
                       <span className="text-blue-400 font-medium group-hover:translate-x-0.5 transition-transform flex items-center gap-1">
-                        Clone & Build <ArrowRight className="w-3 h-3" />
+                        Use Template <ArrowRight className="w-3 h-3" />
                       </span>
                     </div>
                   </div>

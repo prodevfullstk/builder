@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 import React, { useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { useProjectStore } from "@/lib/store/project-store";
+import { useProjectStore, Framework } from "@/lib/store/project-store";
 import { BuilderHeader } from "@/components/builder/builder-header";
 import { ChatPanel } from "@/components/builder/chat-panel";
 import { FileTree } from "@/components/builder/file-tree";
@@ -75,11 +75,28 @@ function BuilderWorkspace() {
     const defaultName = initialPrompt
       ? initialPrompt.slice(0, 32)
       : "Untitled Project";
-    const targetFramework = urlFramework || framework;
-    const newProj = createNewProjectObject(defaultName, targetFramework);
-    if (urlDb) {
-      newProj.dbProvider = urlDb;
+
+    // Auto-detect best framework & database intelligently from user's prompt
+    let detectedFramework: Framework = 'vite'; // Default fast & reliable instant preview stack
+    let detectedDb = 'none';
+
+    if (initialPrompt) {
+      if (/\b(nextjs|next\.js|next\s+15|next\s+14|ssr|server\s+action)\b/i.test(initialPrompt)) {
+        detectedFramework = 'nextjs';
+      } else if (/\b(astro)\b/i.test(initialPrompt)) {
+        detectedFramework = 'astro';
+      } else if (/\b(express|fastify|backend\s+only|node\.js\s+api)\b/i.test(initialPrompt)) {
+        detectedFramework = 'node';
+      }
+
+      if (/\b(supabase|sql|database|db|postgres|table|store\s+data)\b/i.test(initialPrompt)) {
+        detectedDb = 'supabase';
+      }
     }
+
+    const targetFramework = urlFramework || detectedFramework;
+    const newProj = createNewProjectObject(defaultName, targetFramework);
+    newProj.dbProvider = (urlDb || detectedDb) as any;
     loadProjectState(newProj);
 
     // Update browser URL without reloading page
