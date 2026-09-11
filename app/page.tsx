@@ -192,17 +192,6 @@ export default function HomePage() {
               <a href="#recent-projects" className="hover:text-white transition-colors">
                 Projects
               </a>
-              <a href="#templates" className="hover:text-white transition-colors">
-                Templates
-              </a>
-              <a
-                href="https://github.com/prodevfullstk/builder"
-                target="_blank"
-                rel="noreferrer"
-                className="hover:text-white transition-colors flex items-center gap-1"
-              >
-                GitHub <ExternalLink className="w-3 h-3 opacity-60" />
-              </a>
             </nav>
 
             {/* Action CTAs */}
