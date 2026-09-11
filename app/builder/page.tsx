@@ -19,6 +19,7 @@ import {
 } from "@/lib/storage/project-storage";
 import { parseFinalOutput } from "@/lib/ai/code-parser";
 import { parseToolCalls, executeToolCalls } from "@/lib/ai/mcp-executor";
+import { useCreditsStore } from "@/lib/store/credits-store";
 
 function BuilderWorkspace() {
   const {
@@ -90,6 +91,17 @@ function BuilderWorkspace() {
     // If navigated with ?prompt=..., trigger AI generation immediately
     if (initialPrompt && status === "idle") {
       const runInitialGeneration = async () => {
+        // Deduct points for new build
+        const hasCredits = useCreditsStore.getState().deductCredits('NEW_PROJECT_BUILD');
+        if (!hasCredits) {
+          addMessage({
+            role: "assistant",
+            content: "⚠️ You have run out of AI credits. Please click your credits balance in the header to claim your free daily points or top up!",
+          });
+          setStatus("idle");
+          return;
+        }
+
         addMessage({ role: "user", content: initialPrompt });
         setStatus("generating", `Building ${targetFramework.toUpperCase()} project...`);
         setIsStreaming(true);

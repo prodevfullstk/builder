@@ -25,6 +25,8 @@ import {
 import { ProjectsModal } from './projects-modal';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { CreditsBadge } from '@/components/credits/credits-badge';
+import { CreditsModal } from '@/components/credits/credits-modal';
 
 export function BuilderHeader() {
   const {
@@ -232,6 +234,9 @@ export function BuilderHeader() {
 
         {/* Right actions */}
         <div className="flex items-center gap-2">
+          {/* AI Credits Badge */}
+          <CreditsBadge />
+
           <Button
             variant="outline"
             size="sm"
@@ -274,6 +279,9 @@ export function BuilderHeader() {
         onSelectProject={handleSelectProject}
         onNewProject={handleNewProject}
       />
+
+      {/* Credits & Tokenomics Modal */}
+      <CreditsModal />
     </>
   );
 }

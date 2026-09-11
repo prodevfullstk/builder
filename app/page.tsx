@@ -27,6 +27,8 @@ import {
   SavedProjectSummary,
 } from '@/lib/storage/project-storage';
 import { Framework } from '@/lib/store/project-store';
+import { CreditsBadge } from '@/components/credits/credits-badge';
+import { CreditsModal } from '@/components/credits/credits-modal';
 
 const QUICK_CATEGORIES = [
   {
@@ -203,6 +205,9 @@ export default function HomePage() {
 
             {/* Action CTAs */}
             <div className="flex items-center gap-3">
+              {/* Credits Badge */}
+              <CreditsBadge />
+
               {recentProjects.length > 0 && (
                 <button
                   onClick={() => router.push(`/builder?id=${recentProjects[0].id}`)}
@@ -613,6 +618,9 @@ export default function HomePage() {
           Opendork Web Studio · Built with Next.js 15, CodeSandbox Nodebox & Google Gemini 3.5 Flash
         </p>
       </footer>
+
+      {/* AI Credits & Upgrade Modal */}
+      <CreditsModal />
     </div>
   );
 }

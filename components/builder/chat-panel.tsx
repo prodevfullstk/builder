@@ -31,6 +31,7 @@ import { extractStreamingState, parseFinalOutput } from '@/lib/ai/code-parser';
 import { parseToolCalls, executeToolCalls } from '@/lib/ai/mcp-executor';
 import { SUGGESTED_PROMPTS } from '@/lib/ai/prompt-templates';
 import { V0Stepper } from './v0-stepper';
+import { useCreditsStore, CreditAction } from '@/lib/store/credits-store';
 
 interface ChatPanelProps {
   onGenerateStart?: () => void;
@@ -41,6 +42,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     messages,
     addMessage,
     updateStreamingMessage,
+    mode,
     status,
     setStatus,
     files,
@@ -76,6 +78,25 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
   const handleSubmit = async (promptText: string) => {
     const query = promptText.trim();
     if (!query || status === 'generating') return;
+
+    // Check & deduct user credits before triggering generation
+    const isFix = Boolean(runtimeError);
+    const isFreshProject = Object.keys(files).length === 0;
+
+    const creditAction: CreditAction = isFix
+      ? 'AUTO_FIX'
+      : isFreshProject
+      ? 'NEW_PROJECT_BUILD'
+      : 'FEATURE_EDIT';
+
+    const hasEnoughCredits = useCreditsStore.getState().deductCredits(creditAction);
+    if (!hasEnoughCredits) {
+      addMessage({
+        role: 'assistant',
+        content: '⚠️ You have run out of AI credits. Please click your credits balance at the top header to claim your free daily points or top up!',
+      });
+      return;
+    }
 
     setInput('');
     onGenerateStart?.();
