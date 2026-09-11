@@ -167,17 +167,11 @@ export default function HomePage() {
                 <span className="text-xl font-bold tracking-tight text-white font-sans">
                   opendork
                 </span>
-                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">
-                  Studio 2.5
-                </span>
               </div>
             </div>
 
             {/* Action CTAs */}
             <div className="flex items-center gap-3">
-              {/* Credits Badge */}
-              <CreditsBadge />
-
               {/* User Profile / Login Menu */}
               <UserMenu />
 
