@@ -1,19 +1,33 @@
-'use client';
+﻿"use client";
 
 // Force dynamic rendering — builder uses browser-only APIs (cuid, Nodebox, esbuild-wasm)
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import React, { useEffect, useRef, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { useProjectStore } from '@/lib/store/project-store';
-import { BuilderHeader } from '@/components/builder/builder-header';
-import { ChatPanel } from '@/components/builder/chat-panel';
-import { FileTree } from '@/components/builder/file-tree';
-import { CodeEditor } from '@/components/builder/code-editor';
-import { PreviewPane } from '@/components/builder/preview-pane';
+import React, { useEffect, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { useProjectStore } from "@/lib/store/project-store";
+import { BuilderHeader } from "@/components/builder/builder-header";
+import { ChatPanel } from "@/components/builder/chat-panel";
+import { FileTree } from "@/components/builder/file-tree";
+import { CodeEditor } from "@/components/builder/code-editor";
+import { PreviewPane } from "@/components/builder/preview-pane";
+import {
+  loadProjectFromStorage,
+  saveProjectToStorage,
+  createNewProjectObject,
+  SavedProject,
+} from "@/lib/storage/project-storage";
+import { parseFinalOutput } from "@/lib/ai/code-parser";
+import { parseToolCalls, executeToolCalls } from "@/lib/ai/mcp-executor";
 
 function BuilderWorkspace() {
   const {
+    projectId,
+    projectName,
+    setProjectId,
+    setProjectName,
+    loadProjectState,
+    setIsSaved,
     mode,
     status,
     setStatus,
@@ -21,142 +35,147 @@ function BuilderWorkspace() {
     files,
     setFiles,
     framework,
+    dbProvider,
+    authProvider,
+    messages,
+    activeFile,
     addLog,
     setActiveFile,
     setStreamingFile,
     setIsStreaming,
     setActiveSteps,
   } = useProjectStore();
+
   const searchParams = useSearchParams();
-  const hasTriggeredInitialPrompt = useRef(false);
+  const hasInitialized = useRef(false);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Read prompt from search params and auto-start generation
+  // 1. Initial Project Loading & URL Sync
   useEffect(() => {
-    const initialPrompt = searchParams.get('prompt');
-    if (initialPrompt && !hasTriggeredInitialPrompt.current && status === 'idle') {
-      hasTriggeredInitialPrompt.current = true;
-      
-      const runInitialGeneration = async () => {
-        addMessage({ role: 'user', content: initialPrompt });
-        setStatus('generating', 'Generating website with Gemini 3.6 Flash...');
-        setIsStreaming(true);
-        addLog(`[AI] Auto-generating from prompt: "${initialPrompt}"`);
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
 
-        const initialSteps: any[] = [
-          { id: 'thought-1', type: 'thought', label: 'Thought for 1s', duration: '1s', status: 'completed' },
-          { id: 'inspect-1', type: 'inspect', label: 'Inspected project structure', status: 'completed' },
-          { id: 'design-1', type: 'design', label: 'Created design direction', status: 'completed' },
-        ];
-        setActiveSteps(initialSteps);
+    const urlId = searchParams.get("id");
+    const initialPrompt = searchParams.get("prompt");
+
+    if (urlId) {
+      // Load existing project by ID from storage
+      const existing = loadProjectFromStorage(urlId);
+      if (existing) {
+        loadProjectState(existing);
+        addLog(`[Project] Loaded "${existing.name}" (${urlId})`);
+        return;
+      }
+    }
+
+    // No valid ID in URL — create new project
+    const defaultName = initialPrompt
+      ? initialPrompt.slice(0, 32)
+      : "Untitled Project";
+    const newProj = createNewProjectObject(defaultName, framework);
+    loadProjectState(newProj);
+
+    // Update browser URL without reloading page
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", `/builder?id=${newProj.id}`);
+    }
+    addLog(`[Project] Created new workspace (${newProj.id})`);
+
+    // If navigated with ?prompt=..., trigger AI generation immediately
+    if (initialPrompt && status === "idle") {
+      const runInitialGeneration = async () => {
+        addMessage({ role: "user", content: initialPrompt });
+        setStatus("generating", `Building ${framework.toUpperCase()} project...`);
+        setIsStreaming(true);
+
+        const analyzeStep = {
+          id: "init-analyze",
+          type: "thought" as const,
+          label: `Analyzing request for ${framework.toUpperCase()}...`,
+          status: "running" as const,
+        };
+        setActiveSteps([analyzeStep]);
 
         try {
-          const response = await fetch('/api/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          const response = await fetch("/api/agent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              prompt: initialPrompt,
+              message: initialPrompt,
               framework,
+              dbProvider,
+              authProvider,
               history: [],
-              currentFiles: {}, // empty → AI creates fresh project from scratch
+              files: {},
+              mode: "build",
             }),
           });
 
           if (!response.ok || !response.body) {
-            throw new Error(`HTTP error ${response.status}`);
+            throw new Error(`HTTP ${response.status}`);
           }
 
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
-          let accumulatedText = '';
-          const { extractStreamingState } = await import('@/lib/ai/code-parser');
-          let currentSteps = [...initialSteps];
-          const trackedFiles = new Set<string>();
+          let accumulated = "";
 
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-
-            const chunk = decoder.decode(value, { stream: true });
-            accumulatedText += chunk;
-
-            const { files: parsedFiles, currentStreamingFile } = extractStreamingState(accumulatedText);
-            if (Object.keys(parsedFiles).length > 0) {
-              setFiles(parsedFiles);
-              if (currentStreamingFile) {
-                setStreamingFile(currentStreamingFile);
-                setActiveFile(currentStreamingFile);
-
-                if (!trackedFiles.has(currentStreamingFile)) {
-                  trackedFiles.add(currentStreamingFile);
-                  currentSteps = [
-                    ...currentSteps,
-                    {
-                      id: `step-${currentStreamingFile}`,
-                      type: 'file',
-                      label: `Built ${currentStreamingFile.replace(/^components\//, '')}`,
-                      file: currentStreamingFile,
-                      status: 'running',
-                    },
-                  ];
-                  setActiveSteps(currentSteps);
-                }
-              }
-            }
+            accumulated += decoder.decode(value, { stream: true });
           }
 
-          const { files: finalFiles } = extractStreamingState(accumulatedText);
+          // Execute MCP tool calls if emitted
+          const { toolCalls, explanation: mcpExplanation } = parseToolCalls(accumulated);
+          let genFiles: Record<string, string> = {};
+
+          if (toolCalls.length > 0) {
+            const res = executeToolCalls({}, toolCalls);
+            genFiles = res.updatedFiles;
+          }
+
+          // Fallback to standard parser
+          const { files: parsedFiles, aiExplanation } = parseFinalOutput(accumulated);
+          const finalFiles = { ...parsedFiles, ...genFiles };
+
           if (Object.keys(finalFiles).length > 0) {
             setFiles(finalFiles);
-            if (finalFiles['app/page.tsx']) {
-              setActiveFile('app/page.tsx');
-            }
-            addLog(`[AI] Generated ${Object.keys(finalFiles).length} project files.`);
+            const entry =
+              finalFiles["app/page.tsx"]
+                ? "app/page.tsx"
+                : finalFiles["src/App.tsx"]
+                ? "src/App.tsx"
+                : Object.keys(finalFiles)[0];
+            if (entry) setActiveFile(entry);
           }
 
-          const finalSteps = currentSteps.map((step) => {
-            if (step.file && finalFiles[step.file]) {
-              const lines = finalFiles[step.file].split('\n').length;
-              return { ...step, status: 'completed', linesAdded: lines };
-            }
-            return { ...step, status: 'completed' };
-          });
+          const steps = [
+            { id: "init-analyze", type: "thought" as const, label: "Analyzed requirements", status: "completed" as const },
+            { id: "init-build", type: "file" as const, label: `Built ${Object.keys(finalFiles).length} project files`, status: "completed" as const },
+            { id: "init-preview", type: "preview" as const, label: "Preview ready", status: "completed" as const },
+          ];
 
-          finalSteps.push({
-            id: 'preview-checked',
-            type: 'preview',
-            label: 'Checked preview',
-            status: 'completed',
-          });
-
-          setActiveSteps(finalSteps);
+          setActiveSteps(steps);
           setIsStreaming(false);
           setStreamingFile(null);
 
-          const fileList = Object.keys(finalFiles);
-          const summaryText =
-            `Built modern ${framework.toUpperCase()} application with:\n` +
-            `• ${fileList.length} modular components and utilities\n` +
-            `• Clean responsive Tailwind CSS design system\n` +
-            `• Interactive state management and animations`;
-
+          const explanation = mcpExplanation || aiExplanation || `Generated ${framework.toUpperCase()} application.`;
           addMessage({
-            role: 'assistant',
-            content: summaryText,
-            steps: finalSteps,
-            filesGenerated: fileList,
+            role: "assistant",
+            content: explanation,
+            steps,
+            filesGenerated: Object.keys(finalFiles),
             showPreview: true,
           });
 
-          setStatus('ready', 'Project ready');
+          setStatus("ready", "Application ready");
         } catch (err: any) {
-          console.error('Initial generation failed:', err);
           setIsStreaming(false);
           setStreamingFile(null);
-          setStatus('error', err?.message || 'Failed to generate');
-          addLog(`[Error] ${err?.message || 'Initial generation failed'}`);
+          setStatus("error", err?.message || "Generation failed");
           addMessage({
-            role: 'assistant',
-            content: `⚠️ Initial generation encountered an issue: ${err?.message || 'Connection error'}. You can re-submit your prompt below to regenerate.`,
+            role: "assistant",
+            content: `⚠️ Generation error: ${err?.message || "Please check connection"}.`,
           });
         }
       };
@@ -165,9 +184,43 @@ function BuilderWorkspace() {
     }
   }, [searchParams]);
 
+  // 2. Debounced Auto-Save to Persistent Storage
+  useEffect(() => {
+    if (!projectId || !hasInitialized.current) return;
+
+    // Mark as unsaved immediately
+    setIsSaved(false);
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(() => {
+      const projectData: SavedProject = {
+        id: projectId,
+        name: projectName || "Untitled Project",
+        framework,
+        dbProvider,
+        authProvider,
+        files,
+        messages,
+        activeFile,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      saveProjectToStorage(projectData);
+      setIsSaved(true);
+    }, 600);
+
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [projectId, projectName, files, messages, framework, dbProvider, authProvider, activeFile]);
+
   return (
     <div className="h-screen w-screen flex flex-col bg-zinc-950 overflow-hidden text-zinc-100">
-      {/* Top Header */}
+      {/* Top Header with Persistence & Projects Switcher */}
       <BuilderHeader />
 
       {/* Main Workspace Layout */}
@@ -177,7 +230,7 @@ function BuilderWorkspace() {
 
         {/* Center / Right Dynamic Workspace */}
         <div className="flex-1 flex overflow-hidden">
-          {mode === 'split' && (
+          {mode === "split" && (
             <>
               <FileTree />
               <CodeEditor />
@@ -185,16 +238,14 @@ function BuilderWorkspace() {
             </>
           )}
 
-          {mode === 'code' && (
+          {mode === "code" && (
             <>
               <FileTree />
               <CodeEditor />
             </>
           )}
 
-          {mode === 'preview' && (
-            <PreviewPane />
-          )}
+          {mode === "preview" && <PreviewPane />}
         </div>
       </div>
     </div>
@@ -203,7 +254,13 @@ function BuilderWorkspace() {
 
 export default function BuilderPage() {
   return (
-    <Suspense fallback={<div className="h-screen w-screen bg-zinc-950 flex items-center justify-center text-zinc-400">Loading Workspace...</div>}>
+    <Suspense
+      fallback={
+        <div className="h-screen w-screen bg-zinc-950 flex items-center justify-center text-zinc-400 text-sm">
+          Loading Workspace...
+        </div>
+      }
+    >
       <BuilderWorkspace />
     </Suspense>
   );

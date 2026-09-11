@@ -34,6 +34,12 @@ export interface ProjectState {
   isStreaming: boolean;
   framework: Framework;
   
+  // Project Identity & Persistence
+  projectId: string | null;
+  projectName: string;
+  isSaved: boolean;
+  lastSavedAt: number | null;
+
   // UI & Layout
   mode: BuilderMode;
   status: BuilderStatus;
@@ -85,9 +91,26 @@ export interface ProjectState {
   addLog: (log: string) => void;
   clearLogs: () => void;
   resetProject: () => void;
+  setProjectId: (id: string) => void;
+  setProjectName: (name: string) => void;
+  setIsSaved: (isSaved: boolean) => void;
+  loadProjectState: (project: {
+    id: string;
+    name: string;
+    framework?: Framework;
+    dbProvider?: ProjectState['dbProvider'];
+    authProvider?: ProjectState['authProvider'];
+    files: Record<string, string>;
+    messages: ChatMessage[];
+    activeFile?: string;
+  }) => void;
 }
 
 export const useProjectStore = create<ProjectState>((set) => ({
+  projectId: null,
+  projectName: 'Untitled Project',
+  isSaved: true,
+  lastSavedAt: null,
   files: {},
   activeFile: '',
   streamingFile: null,
@@ -273,5 +296,31 @@ export const useProjectStore = create<ProjectState>((set) => ({
       runtimeError: null,
       autoFixAttempts: 0,
       logs: ['[System] Workspace reset.'],
+    }),
+
+  setProjectId: (projectId) => set({ projectId }),
+
+  setProjectName: (projectName) => set({ projectName, isSaved: false }),
+
+  setIsSaved: (isSaved) =>
+    set({ isSaved, ...(isSaved ? { lastSavedAt: Date.now() } : {}) }),
+
+  loadProjectState: (project) =>
+    set({
+      projectId: project.id,
+      projectName: project.name || 'Untitled Project',
+      framework: project.framework || 'nextjs',
+      dbProvider: project.dbProvider || 'none',
+      authProvider: project.authProvider || 'none',
+      files: project.files || {},
+      messages: project.messages || [],
+      activeFile: project.activeFile || Object.keys(project.files || {})[0] || '',
+      isSaved: true,
+      lastSavedAt: Date.now(),
+      runtimeError: null,
+      autoFixAttempts: 0,
+      activeSteps: [],
+      status: 'ready',
+      statusMessage: 'Project loaded',
     }),
 }));
