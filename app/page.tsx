@@ -184,16 +184,6 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Navigation links */}
-            <nav className="hidden md:flex items-center gap-6 text-sm text-zinc-400 font-medium">
-              <a href="#prompt-box" className="hover:text-white transition-colors">
-                Studio
-              </a>
-              <a href="#recent-projects" className="hover:text-white transition-colors">
-                Projects
-              </a>
-            </nav>
-
             {/* Action CTAs */}
             <div className="flex items-center gap-3">
               {/* Credits Badge */}
