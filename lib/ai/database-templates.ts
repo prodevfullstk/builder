@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Database & Auth Provider Templates
  * Used by the AI agent to generate proper DB schemas, migrations, and config files
  */
@@ -11,16 +11,20 @@ export type AuthProvider = "supabase" | "nextauth" | "clerk" | "none";
 export function getSupabaseTemplate(): string {
   return `
 ### SUPABASE GENERATION RULES:
-Generate these additional files:
+MANDATORY: You MUST generate database SQL files in the \`supabase/\` directory. Do NOT omit SQL files or put raw SQL in TypeScript files!
+Generate these files:
 
-1. supabase/migrations/001_initial_schema.sql — CREATE TABLE with Row Level Security enabled
-2. supabase/seed.sql — INSERT sample/demo data
-3. lib/supabase.ts — createClient() setup using ONLY environment variables
-4. .env.example — NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
+1. supabase/schema.sql (or supabase/migrations/001_initial_schema.sql) — Full PostgreSQL DDL:
+   - CREATE TABLE statements with appropriate column types, NOT NULL, PRIMARY KEY, and FOREIGN KEY constraints.
+   - ENABLE ROW LEVEL SECURITY on all tables.
+   - CREATE POLICY for SELECT, INSERT, UPDATE, DELETE (using auth.uid()).
+   - Triggers for updated_at timestamps.
+2. supabase/seed.sql — INSERT statements with realistic sample/demo data matching the schema.
+3. src/lib/supabase.ts (for Vite) or lib/supabase.ts (for Next.js) — createClient() setup with fallback mock data or graceful fallback if environment variables are missing, so the app runs smoothly in preview without throwing errors!
+4. .env.example — VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY)
 
 CRITICAL: NEVER hardcode API keys, URLs, or credentials in any source file.
-CRITICAL: NEVER use the service_role key on the frontend.
-Always use auth.uid() in RLS policies for user-scoped data.`;
+CRITICAL: NEVER omit the supabase/schema.sql file when Supabase is requested!`;
 }
 
 // ─── MySQL ─────────────────────────────────────────────────────────────────

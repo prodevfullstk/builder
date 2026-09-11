@@ -122,8 +122,10 @@ ${getMCPToolsPrompt()}
 2. Every imported component MUST be generated. NEVER import something you don't create.
 3. NEVER use placeholders like "// TODO" or "// implement later". Write 100% complete code.
 4. Use Tailwind CSS for styling. Use lucide-react for icons.
-5. Make components interactive with useState, useEffect, realistic mock data.
-6. ${authProvider !== 'none' ? `Include ${authProvider} authentication — login, register, protected routes.` : ''}
+5. In package.json, ALWAYS use standard stable semver dependencies (e.g. "lucide-react": "^0.344.0", "@supabase/supabase-js": "^2.39.8", "clsx": "^2.1.0", "tailwind-merge": "^2.2.1"). NEVER use "canary", "beta", or unpinned version tags.
+6. When Supabase or any database is requested, ALWAYS generate database SQL files in a dedicated directory (e.g. supabase/schema.sql and supabase/seed.sql). NEVER put raw SQL inside TypeScript files!
+7. Make components interactive with useState, useEffect, realistic mock data.
+8. ${authProvider !== 'none' ? `Include ${authProvider} authentication — login, register, protected routes.` : ''}
 
 ### OUTPUT FORMAT — MANDATORY:
 

@@ -91,6 +91,50 @@ export class NodeboxAdapter {
       normalized[cleanPath] = content;
     }
 
+    // Sanitize package.json to prevent CodeSandbox Sandpack CDN 500 errors
+    if (normalized['package.json']) {
+      try {
+        const pkg = JSON.parse(normalized['package.json']);
+        if (!pkg.dependencies) pkg.dependencies = {};
+
+        const STABLE_MAP: Record<string, string> = {
+          'lucide-react': '^0.344.0',
+          '@supabase/supabase-js': '^2.39.8',
+          'canvas-confetti': '^1.9.2',
+          'framer-motion': '^11.3.31',
+          'clsx': '^2.1.0',
+          'tailwind-merge': '^2.2.1',
+          'zustand': '^4.5.2',
+        };
+
+        for (const [dep, ver] of Object.entries(pkg.dependencies)) {
+          const verStr = String(ver);
+          if (verStr.includes('canary') || verStr.includes('beta') || verStr === 'latest' || verStr === '*') {
+            pkg.dependencies[dep] = STABLE_MAP[dep] || '^1.0.0';
+          } else if (dep === 'lucide-react') {
+            pkg.dependencies[dep] = '^0.344.0';
+          }
+        }
+        normalized['package.json'] = JSON.stringify(pkg, null, 2);
+      } catch {}
+    } else {
+      // Fallback default package.json if AI omitted it
+      const hasVite = Object.keys(normalized).some((p) => p.startsWith('src/'));
+      normalized['package.json'] = JSON.stringify({
+        name: 'opendork-project',
+        private: true,
+        version: '0.0.0',
+        dependencies: {
+          'react': '^18.2.0',
+          'react-dom': '^18.2.0',
+          'lucide-react': '^0.344.0',
+          'clsx': '^2.1.0',
+          'tailwind-merge': '^2.2.1',
+          '@supabase/supabase-js': '^2.39.8'
+        }
+      }, null, 2);
+    }
+
     try {
       await this.nodebox.fs.init(normalized);
       this.log('✅ Files mounted successfully');

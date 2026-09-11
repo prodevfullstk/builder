@@ -46,8 +46,11 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     files,
     setFiles,
     framework,
+    setFramework,
     dbProvider,
+    setDbProvider,
     authProvider,
+    setAuthProvider,
     addLog,
     setActiveFile,
     streamingFile,
@@ -77,6 +80,55 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     setInput('');
     onGenerateStart?.();
     addMessage({ role: 'user', content: query });
+
+    // Auto-detect framework from user prompt (overrides stale UI setting)
+    let effectiveFramework = framework;
+    if (/\b(vite|react\s+vite|vite\s+react)\b/i.test(query)) {
+      effectiveFramework = 'vite';
+    } else if (/\b(astro)\b/i.test(query)) {
+      effectiveFramework = 'astro';
+    } else if (/\b(nextjs|next\.js|next\s+15|next\s+14)\b/i.test(query)) {
+      effectiveFramework = 'nextjs';
+    } else if (/\b(express|fastify|node\.js\s+backend|backend\s+only)\b/i.test(query)) {
+      effectiveFramework = 'node';
+    }
+    if (effectiveFramework !== framework) {
+      setFramework(effectiveFramework);
+      addLog(`[Config] Switched framework to ${effectiveFramework.toUpperCase()} from prompt`);
+    }
+
+    // Auto-detect database from user prompt
+    let effectiveDbProvider = dbProvider;
+    if (/\b(supabase)\b/i.test(query)) {
+      effectiveDbProvider = 'supabase';
+    } else if (/\b(prisma)\b/i.test(query)) {
+      effectiveDbProvider = 'prisma';
+    } else if (/\b(drizzle)\b/i.test(query)) {
+      effectiveDbProvider = 'drizzle';
+    } else if (/\b(postgres|postgresql)\b/i.test(query)) {
+      effectiveDbProvider = 'postgres';
+    } else if (/\b(mysql)\b/i.test(query)) {
+      effectiveDbProvider = 'mysql';
+    } else if (/\b(sqlite)\b/i.test(query)) {
+      effectiveDbProvider = 'sqlite';
+    }
+    if (effectiveDbProvider !== dbProvider) {
+      setDbProvider(effectiveDbProvider);
+      addLog(`[Config] Configured database to ${effectiveDbProvider.toUpperCase()} from prompt`);
+    }
+
+    // Auto-detect auth provider from user prompt
+    let effectiveAuthProvider = authProvider;
+    if (/\b(clerk)\b/i.test(query)) {
+      effectiveAuthProvider = 'clerk';
+    } else if (/\b(nextauth|next-auth|auth\.js)\b/i.test(query)) {
+      effectiveAuthProvider = 'nextauth';
+    } else if (effectiveDbProvider === 'supabase' && /\b(auth|login|signup|user|authentication)\b/i.test(query)) {
+      effectiveAuthProvider = 'supabase';
+    }
+    if (effectiveAuthProvider !== authProvider) {
+      setAuthProvider(effectiveAuthProvider);
+    }
 
     // Detect intent — AI agent handles both chat and build
     // 1. English + Bengali build verbs
@@ -124,9 +176,9 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
             history: messages
               .filter((m) => m.content && m.content.trim() !== '' && m.content !== '…')
               .map((m) => ({ role: m.role, content: m.content })),
-            framework,
-            dbProvider,
-            authProvider,
+            framework: effectiveFramework,
+            dbProvider: effectiveDbProvider,
+            authProvider: effectiveAuthProvider,
             mode: 'chat',
           }),
         });
@@ -168,11 +220,9 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
           const merged = { ...files, ...recoveredFiles };
           setFiles(merged);
 
-          const entry = merged['app/page.tsx']
-            ? 'app/page.tsx'
-            : merged['src/App.tsx']
-            ? 'src/App.tsx'
-            : Object.keys(merged)[0];
+          const entry = effectiveFramework === 'vite'
+            ? (merged['src/App.tsx'] ? 'src/App.tsx' : merged['src/App.jsx'] ? 'src/App.jsx' : Object.keys(merged)[0])
+            : (merged['app/page.tsx'] ? 'app/page.tsx' : merged['src/App.tsx'] ? 'src/App.tsx' : Object.keys(merged)[0]);
           if (entry) setActiveFile(entry);
 
           // Clean chat message so raw code doesn't clutter the chat bubble
@@ -210,8 +260,8 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       id: 'analyze-1',
       type: 'thought',
       label: isFixRequest
-        ? `Diagnosing preview error for ${framework.toUpperCase()}...`
-        : `Analyzing request for ${framework.toUpperCase()}...`,
+        ? `Diagnosing preview error for ${effectiveFramework.toUpperCase()}...`
+        : `Analyzing request for ${effectiveFramework.toUpperCase()}...`,
       status: 'running',
     };
     setActiveSteps([analyzeStep]);
@@ -226,9 +276,9 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
             .filter((m) => m.content && m.content.trim() !== '' && m.content !== '…')
             .map((m) => ({ role: m.role, content: m.content })),
           files: isNewBuild && !isFixRequest ? {} : files,
-          framework,
-          dbProvider,
-          authProvider,
+          framework: effectiveFramework,
+          dbProvider: effectiveDbProvider,
+          authProvider: effectiveAuthProvider,
           mode: effectiveMode,
         }),
       });
@@ -239,7 +289,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       const decoder = new TextDecoder();
       let accumulatedText = '';
       let currentSteps: TimelineStep[] = [
-        { ...analyzeStep, status: 'completed', label: isFixRequest ? `Diagnosed preview error` : `Analyzed request for ${framework.toUpperCase()}` },
+        { ...analyzeStep, status: 'completed', label: isFixRequest ? `Diagnosed preview error` : `Analyzed request for ${effectiveFramework.toUpperCase()}` },
       ];
       let trackedFiles = new Set<string>();
       let planningStepAdded = false;
@@ -257,7 +307,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
           const planStep: TimelineStep = {
             id: 'plan-1',
             type: 'inspect',
-            label: `Planning ${framework} architecture...`,
+            label: `Planning ${effectiveFramework} architecture...`,
             status: 'completed',
           };
           currentSteps = [...currentSteps, planStep];
@@ -323,10 +373,11 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       if (Object.keys(mergedFiles).length > 0) {
         setFiles(mergedFiles);
         // Auto-select entry file based on framework
-        const entryFile = mergedFiles['app/page.tsx'] ? 'app/page.tsx'
-          : mergedFiles['src/App.tsx'] ? 'src/App.tsx'
-          : mergedFiles['src/pages/index.astro'] ? 'src/pages/index.astro'
-          : Object.keys(mergedFiles)[0];
+        const entryFile = effectiveFramework === 'vite'
+          ? (mergedFiles['src/App.tsx'] ? 'src/App.tsx' : mergedFiles['src/App.jsx'] ? 'src/App.jsx' : Object.keys(mergedFiles)[0])
+          : effectiveFramework === 'astro'
+          ? (mergedFiles['src/pages/index.astro'] ? 'src/pages/index.astro' : Object.keys(mergedFiles)[0])
+          : (mergedFiles['app/page.tsx'] ? 'app/page.tsx' : mergedFiles['src/App.tsx'] ? 'src/App.tsx' : Object.keys(mergedFiles)[0]);
         if (entryFile) setActiveFile(entryFile);
         addLog(`[AI] Workspace updated: ${Object.keys(mergedFiles).length} files (${hasToolCalls ? `${toolCalls.length} MCP tools executed` : 'file parser'}).`);
       }
@@ -353,7 +404,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       const chosenExplanation = mcpExplanation || aiExplanation;
       const responseContent = chosenExplanation && chosenExplanation.length > 20
         ? chosenExplanation
-        : `Updated ${framework.toUpperCase()} project with ${fileList.length} files: ${fileList.slice(0, 4).map(f => f.split('/').pop()).join(', ')}${fileList.length > 4 ? '...' : ''}.`;
+        : `Updated ${effectiveFramework.toUpperCase()} project with ${fileList.length} files: ${fileList.slice(0, 4).map(f => f.split('/').pop()).join(', ')}${fileList.length > 4 ? '...' : ''}.`;
 
       addMessage({
         role: 'assistant',

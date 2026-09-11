@@ -242,19 +242,53 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
           }
         }
 
-        // 2. Build import map
+        // 2. Build import map — with pre-resolved packages + dynamic bare-specifier resolver
+        const KNOWN_PACKAGES = {
+          "react": "https://esm.sh/react@19?dev",
+          "react/jsx-runtime": "https://esm.sh/react@19/jsx-runtime?dev",
+          "react/jsx-dev-runtime": "https://esm.sh/react@19/jsx-dev-runtime?dev",
+          "react-dom": "https://esm.sh/react-dom@19?dev",
+          "react-dom/client": "https://esm.sh/react-dom@19/client?dev",
+          "lucide-react": "https://esm.sh/lucide-react@0.475.0?dev",
+          "framer-motion": "https://esm.sh/framer-motion@11.3.31?dev",
+          "clsx": "https://esm.sh/clsx@2.1.0?dev",
+          "tailwind-merge": "https://esm.sh/tailwind-merge@2.2.1?dev",
+          "zustand": "https://esm.sh/zustand@4.5.2?dev",
+          "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.8?dev",
+          "canvas-confetti": "https://esm.sh/canvas-confetti@1.9.2?dev",
+          "axios": "https://esm.sh/axios@1.6.8?dev",
+          "date-fns": "https://esm.sh/date-fns@3.6.0?dev",
+          "recharts": "https://esm.sh/recharts@2.12.7?dev",
+          "chart.js": "https://esm.sh/chart.js@4.4.2?dev",
+          "react-chartjs-2": "https://esm.sh/react-chartjs-2@5.2.0?dev",
+          "react-hot-toast": "https://esm.sh/react-hot-toast@2.4.1?dev",
+          "react-router-dom": "https://esm.sh/react-router-dom@6.23.1?dev",
+          "react-query": "https://esm.sh/react-query@3.39.3?dev",
+          "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.45.0?dev",
+          "immer": "https://esm.sh/immer@10.1.1?dev",
+        };
+
+        // Auto-resolve any bare imports in user files not already in KNOWN_PACKAGES
+        const allFileContent = Object.values(rawFiles).join('\\n');
+        const bareImportRegex = /from\\s+['"]([^./][^'"]*)['"]/g;
+        const extraImports = {};
+        let m;
+        while ((m = bareImportRegex.exec(allFileContent)) !== null) {
+          const pkg = m[1];
+          // Skip if already known, or if it's a blob/http import
+          if (!KNOWN_PACKAGES[pkg] && !blobMap[pkg] && !pkg.startsWith('http') && !pkg.startsWith('blob')) {
+            const basePkg = pkg.split('/').slice(0, pkg.startsWith('@') ? 2 : 1).join('/');
+            if (!KNOWN_PACKAGES[basePkg] && !extraImports[pkg]) {
+              extraImports[pkg] = 'https://esm.sh/' + pkg + '?dev';
+            }
+          }
+        }
+
         const importMap = {
           imports: {
-            "react": "https://esm.sh/react@19?dev",
-            "react/jsx-runtime": "https://esm.sh/react@19/jsx-runtime?dev",
-            "react/jsx-dev-runtime": "https://esm.sh/react@19/jsx-dev-runtime?dev",
-            "react-dom": "https://esm.sh/react-dom@19?dev",
-            "react-dom/client": "https://esm.sh/react-dom@19/client?dev",
-            "lucide-react": "https://esm.sh/lucide-react@latest?dev",
-            "framer-motion": "https://esm.sh/framer-motion@latest?dev",
-            "clsx": "https://esm.sh/clsx?dev",
-            "tailwind-merge": "https://esm.sh/tailwind-merge?dev",
-            ...blobMap
+            ...KNOWN_PACKAGES,
+            ...extraImports,
+            ...blobMap,
           }
         };
 
