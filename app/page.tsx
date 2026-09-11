@@ -177,22 +177,6 @@ export default function HomePage() {
               id="prompt-box"
               className="relative bg-zinc-900/95 backdrop-blur-2xl border-2 border-zinc-700/80 group-hover:border-zinc-600 group-focus-within:border-blue-500/90 rounded-2xl p-4 sm:p-5 shadow-2xl shadow-blue-950/50 text-left transition-all duration-300"
             >
-              {/* Chatbox Header Ribbon */}
-              <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-800/80">
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-sm shadow-blue-500/30">
-                    <Sparkles className="w-3 h-3 text-white" />
-                  </div>
-                  <span className="text-xs font-semibold text-zinc-200 tracking-tight flex items-center gap-1.5">
-                    <span>Ask AI Agent to build anything</span>
-                    <span className="text-[10px] text-zinc-500 font-normal">· Instant Preview</span>
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 bg-zinc-950/70 border border-zinc-800 px-2 py-0.5 rounded-md">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Agent Ready</span>
-                </div>
-              </div>
 
               {/* Textarea Input */}
               <textarea
