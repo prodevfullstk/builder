@@ -28,6 +28,7 @@ function PanelToggleIcon({ mirrored = false }: { mirrored?: boolean }) {
 }
 import { useProjectStore, TimelineStep } from '@/lib/store/project-store';
 import { extractStreamingState, parseFinalOutput } from '@/lib/ai/code-parser';
+import { parseToolCalls, executeToolCalls } from '@/lib/ai/mcp-executor';
 import { SUGGESTED_PROMPTS } from '@/lib/ai/prompt-templates';
 import { V0Stepper } from './v0-stepper';
 
@@ -224,28 +225,58 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         }
       }
 
-      // ── Final parse — prefer <FILES> JSON, fallback to markdown ──
-      const { files: finalFiles, aiExplanation, parseError } = parseFinalOutput(accumulatedText);
+      // ── MCP Tool Execution Layer ──
+      const { toolCalls, explanation: mcpExplanation } = parseToolCalls(accumulatedText);
+      let mcpFiles = { ...(isNewBuild ? {} : files) };
+      const hasToolCalls = toolCalls.length > 0;
+      let toolSteps: TimelineStep[] = [];
 
-      if (Object.keys(finalFiles).length > 0) {
-        setFiles(isNewBuild ? finalFiles : { ...files, ...finalFiles });
+      if (hasToolCalls) {
+        const mcpResult = executeToolCalls(mcpFiles, toolCalls);
+        mcpFiles = mcpResult.updatedFiles;
+        mcpResult.logs.forEach((l) => addLog(l));
+
+        toolSteps = mcpResult.executedTools.map((t, idx) => ({
+          id: `mcp-${idx}-${t.path}`,
+          type: 'file' as const,
+          label: `[${t.tool}] ${t.path.split('/').pop()} (${t.action})`,
+          file: t.path,
+          status: 'completed' as const,
+        }));
+      }
+
+      // ── Standard Parser (FILES block or markdown fences) ──
+      const { files: parsedFiles, aiExplanation, parseError } = parseFinalOutput(accumulatedText);
+
+      // Merge: MCP tool modifications take precedence, supplemented by parsed files
+      const mergedFiles = hasToolCalls
+        ? { ...parsedFiles, ...mcpFiles }
+        : Object.keys(parsedFiles).length > 0
+        ? (isNewBuild ? parsedFiles : { ...files, ...parsedFiles })
+        : files;
+
+      if (Object.keys(mergedFiles).length > 0) {
+        setFiles(mergedFiles);
         // Auto-select entry file based on framework
-        const entryFile = finalFiles['app/page.tsx'] ? 'app/page.tsx'
-          : finalFiles['src/App.tsx'] ? 'src/App.tsx'
-          : finalFiles['src/pages/index.astro'] ? 'src/pages/index.astro'
-          : Object.keys(finalFiles)[0];
+        const entryFile = mergedFiles['app/page.tsx'] ? 'app/page.tsx'
+          : mergedFiles['src/App.tsx'] ? 'src/App.tsx'
+          : mergedFiles['src/pages/index.astro'] ? 'src/pages/index.astro'
+          : Object.keys(mergedFiles)[0];
         if (entryFile) setActiveFile(entryFile);
-        addLog(`[AI] Parsed ${Object.keys(finalFiles).length} files (${parseError ? 'markdown fallback' : accumulatedText.includes('<FILES>') ? 'JSON block' : 'markdown'}).`);
+        addLog(`[AI] Workspace updated: ${Object.keys(mergedFiles).length} files (${hasToolCalls ? `${toolCalls.length} MCP tools executed` : 'file parser'}).`);
       }
 
       // Mark all file steps as completed with line counts
-      const finalSteps: TimelineStep[] = currentSteps.map((step) => {
-        if (step.file && finalFiles[step.file]) {
-          const lines = finalFiles[step.file].split('\n').length;
-          return { ...step, status: 'completed', label: `Built ${step.file.split('/').pop()}`, linesAdded: lines };
-        }
-        return { ...step, status: 'completed' };
-      });
+      const finalSteps: TimelineStep[] = [
+        ...currentSteps.map((step) => {
+          if (step.file && mergedFiles[step.file]) {
+            const lines = mergedFiles[step.file].split('\n').length;
+            return { ...step, status: 'completed' as const, label: `Built ${step.file.split('/').pop()}`, linesAdded: lines };
+          }
+          return { ...step, status: 'completed' as const };
+        }),
+        ...toolSteps,
+      ];
       finalSteps.push({ id: 'preview-checked', type: 'preview', label: 'Preview ready', status: 'completed' });
 
       setActiveSteps(finalSteps);
@@ -253,10 +284,11 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       setStreamingFile(null);
 
       // Use AI explanation if available, else generate a brief summary
-      const fileList = Object.keys(finalFiles);
-      const responseContent = aiExplanation && aiExplanation.length > 20
-        ? aiExplanation
-        : `Built ${framework.toUpperCase()} project with ${fileList.length} files: ${fileList.slice(0, 4).map(f => f.split('/').pop()).join(', ')}${fileList.length > 4 ? '...' : ''}.`;
+      const fileList = Object.keys(mergedFiles);
+      const chosenExplanation = mcpExplanation || aiExplanation;
+      const responseContent = chosenExplanation && chosenExplanation.length > 20
+        ? chosenExplanation
+        : `Updated ${framework.toUpperCase()} project with ${fileList.length} files: ${fileList.slice(0, 4).map(f => f.split('/').pop()).join(', ')}${fileList.length > 4 ? '...' : ''}.`;
 
       addMessage({
         role: 'assistant',

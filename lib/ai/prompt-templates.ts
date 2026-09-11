@@ -4,6 +4,7 @@
  */
 
 import { getFullStackDBGuide, DBProvider, AuthProvider } from './database-templates';
+import { getMCPToolsPrompt } from './mcp-tools';
 
 // ─── Framework-specific file structure guides ──────────────────────────────
 
@@ -97,6 +98,7 @@ You build complete, production-ready web applications.
 
 ${frameworkGuide}
 ${dbGuide}
+${getMCPToolsPrompt()}
 
 ### ⚠️ CRITICAL GENERATION RULES:
 1. Generate ALL required files — minimum 5-8 files for frontend projects.

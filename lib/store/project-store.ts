@@ -56,6 +56,7 @@ export interface ProjectState {
   // Actions
   setFiles: (files: Record<string, string>) => void;
   updateFile: (path: string, content: string) => void;
+  editFile: (path: string, targetContent: string, replacementContent: string) => boolean;
   createFile: (path: string, content?: string) => void;
   deleteFile: (path: string) => void;
   setActiveFile: (path: string) => void;
@@ -125,6 +126,41 @@ export const useProjectStore = create<ProjectState>((set) => ({
         [path]: content,
       },
     })),
+
+  editFile: (path, targetContent, replacementContent) => {
+    let success = false;
+    set((state) => {
+      const current = state.files[path];
+      if (!current) return state;
+
+      if (current.includes(targetContent)) {
+        success = true;
+        return {
+          files: {
+            ...state.files,
+            [path]: current.replace(targetContent, replacementContent),
+          },
+          activeFile: path,
+        };
+      }
+
+      // Fallback: trimmed match
+      const trimmedTarget = targetContent.trim();
+      if (trimmedTarget && current.includes(trimmedTarget)) {
+        success = true;
+        return {
+          files: {
+            ...state.files,
+            [path]: current.replace(trimmedTarget, replacementContent.trim()),
+          },
+          activeFile: path,
+        };
+      }
+
+      return state;
+    });
+    return success;
+  },
 
   createFile: (path, content = '') =>
     set((state) => ({
