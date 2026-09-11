@@ -5,21 +5,12 @@ import { useRouter } from 'next/navigation';
 import {
   Sparkles,
   ArrowRight,
-  Code2,
-  Cpu,
   CheckCircle2,
-  Zap,
   FolderCode,
   Clock,
   Trash2,
   Plus,
-  Database,
-  ExternalLink,
   ChevronRight,
-  Gamepad2,
-  ShoppingBag,
-  LineChart,
-  Bot,
 } from 'lucide-react';
 import {
   listSavedProjects,
@@ -65,48 +56,7 @@ const QUICK_CATEGORIES = [
   },
 ];
 
-const CURATED_TEMPLATES = [
-  {
-    title: 'Gamified Habit & Quest Tracker',
-    badge: 'Popular',
-    badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-    icon: Gamepad2,
-    description: 'Level-up daily quests, XP progress bar, streak flame animations, and Supabase database schema.',
-    framework: 'vite' as Framework,
-    db: 'supabase',
-    prompt: 'Build a full-stack Gamified Habit & Quest Tracker web app using React (Vite), Tailwind CSS, Lucide icons, and Supabase.',
-  },
-  {
-    title: 'AI Voice Platform Landing',
-    badge: 'Featured',
-    badgeColor: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-    icon: Bot,
-    description: 'Ultra-modern dark theme, dynamic pricing toggle, testimonial carousel, and high-converting CTA sections.',
-    framework: 'nextjs' as Framework,
-    db: 'none',
-    prompt: 'Build a high-converting SaaS landing page for an AI voice agent platform. Dark theme, gradient badges, pricing table with billing toggle, FAQ accordion, and testimonial carousel.',
-  },
-  {
-    title: 'Web3 Crypto & Asset Tracker',
-    badge: 'Hot',
-    badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-    icon: LineChart,
-    description: 'Live price charts, portfolio asset breakdown, transaction history table, and quick swap modal.',
-    framework: 'vite' as Framework,
-    db: 'none',
-    prompt: 'Build a Web3 Crypto Portfolio Tracker dashboard with live asset charts, wallet balance cards, transaction history table with search/filter, and buy/sell modal.',
-  },
-  {
-    title: 'Artisanal Keyboard Storefront',
-    badge: 'Fullstack',
-    badgeColor: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-    icon: ShoppingBag,
-    description: 'Product catalog grid, slide-over shopping cart with price math, and Supabase inventory database.',
-    framework: 'nextjs' as Framework,
-    db: 'supabase',
-    prompt: 'Build a modern e-commerce storefront for artisanal mechanical keyboards with product grid, category tabs, cart slide-over drawer with price calculation, and quick-view modal.',
-  },
-];
+
 
 export default function HomePage() {
   const router = useRouter();
@@ -408,95 +358,6 @@ export default function HomePage() {
               </div>
             )}
           </section>
-
-          {/* ── 3. CURATED STARTER TEMPLATES (v0 / Lovable style) ── */}
-          <section id="templates" className="w-full max-w-4xl mx-auto text-left mb-20">
-            <div className="flex items-center justify-between mb-4 px-1">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-amber-400" />
-                <h2 className="text-base font-semibold text-white tracking-tight">
-                  Featured Starter Templates
-                </h2>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {CURATED_TEMPLATES.map((item, idx) => {
-                const IconComponent = item.icon;
-                return (
-                  <div
-                    key={idx}
-                    onClick={() => handleStartBuilding(item.prompt)}
-                    className="p-4 bg-zinc-900/50 hover:bg-zinc-900 border border-zinc-800/80 hover:border-zinc-700 rounded-xl cursor-pointer transition-all duration-200 group flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between mb-2.5">
-                        <div className="flex items-center gap-2">
-                          <div className="p-2 rounded-lg bg-zinc-800 text-blue-400 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                            <IconComponent className="w-4 h-4" />
-                          </div>
-                          <span
-                            className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full border ${item.badgeColor}`}
-                          >
-                            {item.badge}
-                          </span>
-                        </div>
-                      </div>
-
-                      <h3 className="text-sm font-semibold text-zinc-200 group-hover:text-blue-400 transition-colors mb-1">
-                        {item.title}
-                      </h3>
-                      <p className="text-xs text-zinc-400 line-clamp-2">
-                        {item.description}
-                      </p>
-                    </div>
-
-                    <div className="pt-3 border-t border-zinc-800/50 mt-3 flex items-center justify-between text-[11px] text-zinc-500">
-                      <span>Ready to customize</span>
-                      <span className="text-blue-400 font-medium group-hover:translate-x-0.5 transition-transform flex items-center gap-1">
-                        Use Template <ArrowRight className="w-3 h-3" />
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* ── 4. CAPABILITIES / HIGHLIGHTS ── */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 max-w-4xl mx-auto text-left mb-16">
-            <div className="p-4 bg-zinc-900/30 border border-zinc-800 rounded-xl">
-              <Code2 className="w-5 h-5 text-blue-400 mb-2" />
-              <h4 className="text-sm font-semibold text-white mb-1">Monaco Code Editor</h4>
-              <p className="text-xs text-zinc-400">
-                Full multi-file IDE with TypeScript syntax, file tree, and in-memory diffing.
-              </p>
-            </div>
-
-            <div className="p-4 bg-zinc-900/30 border border-zinc-800 rounded-xl">
-              <Cpu className="w-5 h-5 text-indigo-400 mb-2" />
-              <h4 className="text-sm font-semibold text-white mb-1">In-Browser Nodebox</h4>
-              <p className="text-xs text-zinc-400">
-                Zero backend cost. Dev servers run directly in the browser via WebContainers.
-              </p>
-            </div>
-
-            <div className="p-4 bg-zinc-900/30 border border-zinc-800 rounded-xl">
-              <Database className="w-5 h-5 text-emerald-400 mb-2" />
-              <h4 className="text-sm font-semibold text-white mb-1">Supabase SQL Generator</h4>
-              <p className="text-xs text-zinc-400">
-                Auto-generates schemas, migrations, seed data, and Row Level Security policies.
-              </p>
-            </div>
-
-            <div className="p-4 bg-zinc-900/30 border border-zinc-800 rounded-xl">
-              <Zap className="w-5 h-5 text-purple-400 mb-2" />
-              <h4 className="text-sm font-semibold text-white mb-1">Autonomous Self-Healing</h4>
-              <p className="text-xs text-zinc-400">
-                Catches runtime preview errors and repairs code automatically with AI loop.
-              </p>
-            </div>
-          </div>
         </div>
       </main>
 
