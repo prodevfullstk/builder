@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Gemini AI Streaming Client
  * Fixes applied:
  *  - BUG6: System prompt always at position[0], never dropped by sliding window
@@ -25,21 +25,20 @@ const CANDIDATE_MODELS = [
   "gemini-3.5-flash",
   "gemini-3.7-flash",
   "gemini-3.8-flash",
-  "gemini-3.6-flash",
 ];
 
 /** Retry fetch up to maxRetries times on 503 errors, with per-attempt AbortController timeout */
 async function fetchWithRetry(
   url: string,
   options: RequestInit,
-  maxRetries = 3,
-  delayMs = 1200,
-  timeoutMs = 45000
+  maxRetries = 1,
+  delayMs = 600,
+  timeoutMs = 12000
 ): Promise<Response> {
   let lastRes: Response | null = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    // ISSUE15 fix: abort if no response within timeoutMs
+    // Abort if no response within timeoutMs
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -95,14 +94,16 @@ export async function createGeminiStream({
   framework = "nextjs",
   history = [],
 }: StreamGenerationOptions): Promise<ReadableStream<Uint8Array>> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const rawKey = process.env.GEMINI_API_KEY || "";
+  const apiKey = rawKey.trim().replace(/^['"]|['"]$/g, "");
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not configured in environment variables");
   }
 
-  const apiUrl =
+  const rawUrl =
     process.env.GEMINI_API_URL ||
     "https://generativelanguage.googleapis.com/v1beta/openai";
+  const apiUrl = rawUrl.trim().replace(/^['"]|['"]$/g, "").replace(/\/+$/, "");
   const endpoint = `${apiUrl}/chat/completions`;
 
   const messages = buildMessages(history, prompt, framework);
