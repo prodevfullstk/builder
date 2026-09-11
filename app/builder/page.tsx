@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 // Force dynamic rendering — builder uses browser-only APIs (cuid, Nodebox, esbuild-wasm)
 export const dynamic = "force-dynamic";
@@ -57,6 +57,8 @@ function BuilderWorkspace() {
 
     const urlId = searchParams.get("id");
     const initialPrompt = searchParams.get("prompt");
+    const urlFramework = (searchParams.get("framework") as any) || undefined;
+    const urlDb = (searchParams.get("db") as any) || undefined;
 
     if (urlId) {
       // Load existing project by ID from storage
@@ -72,7 +74,11 @@ function BuilderWorkspace() {
     const defaultName = initialPrompt
       ? initialPrompt.slice(0, 32)
       : "Untitled Project";
-    const newProj = createNewProjectObject(defaultName, framework);
+    const targetFramework = urlFramework || framework;
+    const newProj = createNewProjectObject(defaultName, targetFramework);
+    if (urlDb) {
+      newProj.dbProvider = urlDb;
+    }
     loadProjectState(newProj);
 
     // Update browser URL without reloading page
@@ -85,13 +91,13 @@ function BuilderWorkspace() {
     if (initialPrompt && status === "idle") {
       const runInitialGeneration = async () => {
         addMessage({ role: "user", content: initialPrompt });
-        setStatus("generating", `Building ${framework.toUpperCase()} project...`);
+        setStatus("generating", `Building ${targetFramework.toUpperCase()} project...`);
         setIsStreaming(true);
 
         const analyzeStep = {
           id: "init-analyze",
           type: "thought" as const,
-          label: `Analyzing request for ${framework.toUpperCase()}...`,
+          label: `Analyzing request for ${targetFramework.toUpperCase()}...`,
           status: "running" as const,
         };
         setActiveSteps([analyzeStep]);
@@ -102,8 +108,8 @@ function BuilderWorkspace() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               message: initialPrompt,
-              framework,
-              dbProvider,
+              framework: targetFramework,
+              dbProvider: urlDb || newProj.dbProvider,
               authProvider,
               history: [],
               files: {},
