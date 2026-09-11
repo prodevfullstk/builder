@@ -14,10 +14,15 @@ import {
   Zap,
   Box,
   Server,
+  Sparkles,
+  AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 import { useProjectStore } from '@/lib/store/project-store';
 import { InstantPreview } from '@/components/preview/instant-preview';
 import { detectBackendEntry } from '@/lib/sandbox/detect-backend';
+import { parseToolCalls, executeToolCalls } from '@/lib/ai/mcp-executor';
+import { parseFinalOutput } from '@/lib/ai/code-parser';
 
 // Dynamically import NodeboxPreview with ssr: false
 const NodeboxPreview = dynamic(
@@ -26,7 +31,23 @@ const NodeboxPreview = dynamic(
 );
 
 export function PreviewPane() {
-  const { files, framework, status, setStatus, logs, clearLogs, addLog, updateLastMessageScreenshot } = useProjectStore();
+  const {
+    files,
+    setFiles,
+    framework,
+    status,
+    setStatus,
+    logs,
+    clearLogs,
+    addLog,
+    updateLastMessageScreenshot,
+    runtimeError,
+    setRuntimeError,
+    clearRuntimeError,
+    autoFixAttempts,
+    incrementAutoFixAttempts,
+    resetAutoFixAttempts,
+  } = useProjectStore();
   const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [showLogs, setShowLogs] = useState(false);
   const [previewKey, setPreviewKey] = useState(1);
@@ -34,11 +55,72 @@ export function PreviewPane() {
   const [backendUrl, setBackendUrl] = useState<string | null>(null);
   const [engine, setEngine] = useState<'instant' | 'nodebox'>('instant');
   const [fallbackWarning, setFallbackWarning] = useState<string[] | null>(null);
+  const [isFixing, setIsFixing] = useState(false);
 
   // Detect if project has a backend server.js file
   const hasBackend = useMemo(() => {
     return detectBackendEntry(files) !== null;
   }, [files]);
+
+  // Handle autonomous AI repair for preview errors
+  const handleAutoFix = async () => {
+    if (!runtimeError || isFixing) return;
+    if (autoFixAttempts >= 2) {
+      addLog('[Auto-Fix] Max consecutive auto-fix attempts (2) reached. Please check the code manually.');
+      return;
+    }
+
+    setIsFixing(true);
+    incrementAutoFixAttempts();
+    addLog(`[Auto-Fix] Attempt ${autoFixAttempts + 1}/2: Diagnosing preview error...`);
+
+    try {
+      const res = await fetch('/api/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'auto-fix',
+          message: runtimeError,
+          files,
+          framework,
+        }),
+      });
+
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        accumulated += decoder.decode(value, { stream: true });
+      }
+
+      // 1. Check for MCP tool calls
+      const { toolCalls } = parseToolCalls(accumulated);
+      if (toolCalls.length > 0) {
+        const result = executeToolCalls(files, toolCalls);
+        setFiles(result.updatedFiles);
+        result.logs.forEach((l) => addLog(l));
+        addLog(`[Auto-Fix] Applied ${toolCalls.length} tool repairs.`);
+      } else {
+        // 2. Fallback to structured <FILES> or fences
+        const { files: fixedFiles } = parseFinalOutput(accumulated);
+        if (Object.keys(fixedFiles).length > 0) {
+          setFiles({ ...files, ...fixedFiles });
+          addLog(`[Auto-Fix] Repaired ${Object.keys(fixedFiles).length} files.`);
+        }
+      }
+
+      clearRuntimeError();
+      setPreviewKey((k) => k + 1);
+    } catch (err: any) {
+      addLog(`[Auto-Fix Failed] ${err?.message || 'Repair attempt failed'}`);
+    } finally {
+      setIsFixing(false);
+    }
+  };
 
   // Listen for fallback-warning from preview iframe
   React.useEffect(() => {
@@ -203,6 +285,51 @@ export function PreviewPane() {
         </div>
       </div>
 
+      {/* Auto-Fix Error Banner */}
+      {runtimeError && (
+        <div className="shrink-0 flex items-center justify-between gap-3 px-3 py-2 bg-red-500/15 border-b border-red-500/30 text-xs">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+            <div className="min-w-0">
+              <span className="font-semibold text-red-300">Preview Error: </span>
+              <span className="text-red-200/90 font-mono truncate inline-block max-w-md align-bottom">
+                {runtimeError}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {autoFixAttempts < 2 ? (
+              <button
+                onClick={handleAutoFix}
+                disabled={isFixing}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-red-600 hover:bg-red-500 text-white rounded font-medium text-xs transition-colors disabled:opacity-50 shadow-sm cursor-pointer"
+              >
+                {isFixing ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Repairing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Auto-Fix with AI</span>
+                  </>
+                )}
+              </button>
+            ) : (
+              <span className="text-zinc-400 text-[11px]">Max auto-fixes reached</span>
+            )}
+            <button
+              onClick={clearRuntimeError}
+              className="text-red-400 hover:text-red-200 p-1 cursor-pointer"
+              title="Dismiss error"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Fallback Warning Banner */}
       {fallbackWarning && fallbackWarning.length > 0 && (
         <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border-b border-amber-500/25 text-[11px] text-amber-400">
@@ -226,6 +353,7 @@ export function PreviewPane() {
               backendUrl={backendUrl}
               onError={(err) => {
                 addLog(`[Preview Error] ${err}`);
+                setRuntimeError(err);
               }}
               onScreenshot={(dataUrl) => {
                 updateLastMessageScreenshot(dataUrl);

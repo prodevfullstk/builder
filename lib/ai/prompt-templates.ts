@@ -67,7 +67,7 @@ export function getSystemPrompt(
   framework: string = 'nextjs',
   dbProvider: string = 'none',
   authProvider: string = 'none',
-  mode: 'build' | 'chat' | 'edit' = 'build'
+  mode: 'build' | 'chat' | 'edit' | 'auto-fix' = 'build'
 ): string {
   const frameworkGuide = FRAMEWORK_GUIDES[framework] || FRAMEWORK_GUIDES['nextjs'];
   const dbGuide = getFullStackDBGuide(dbProvider as DBProvider, authProvider as AuthProvider);
@@ -90,6 +90,20 @@ Use the exact output format:
 </FILES>
 
 After the FILES block, briefly explain what you changed in 1-2 sentences.`;
+  }
+
+  if (mode === 'auto-fix') {
+    return `You are Opendork Auto-Fix Agent, an elite debugging and self-healing engineer.
+The user's application encountered an error in the preview sandbox.
+
+YOUR GOAL:
+1. Carefully diagnose the provided error message and trace.
+2. Identify which file has the syntax error, missing import, or broken export.
+3. Repair the code using <TOOL_CALL> with edit_file or write_file, or provide corrected files in a <FILES> block.
+4. Keep all other working features intact. Do NOT delete unrelated files.
+5. Explain what caused the bug and how you resolved it in 1-2 friendly sentences.
+
+${getMCPToolsPrompt()}`;
   }
 
   // BUILD mode (default)

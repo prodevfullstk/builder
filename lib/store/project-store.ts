@@ -50,6 +50,10 @@ export interface ProjectState {
   messages: ChatMessage[];
   activeSteps: TimelineStep[];
   
+  // Runtime Error & Auto-Fix
+  runtimeError: string | null;
+  autoFixAttempts: number;
+
   // Runtime Logs
   logs: string[];
   
@@ -70,6 +74,10 @@ export interface ProjectState {
   setStatus: (status: BuilderStatus, message?: string) => void;
   setDbProvider: (db: ProjectState['dbProvider']) => void;
   setAuthProvider: (auth: ProjectState['authProvider']) => void;
+  setRuntimeError: (err: string | null) => void;
+  clearRuntimeError: () => void;
+  incrementAutoFixAttempts: () => void;
+  resetAutoFixAttempts: () => void;
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
   updateStreamingMessage: (content: string) => void;
   updateLastMessageScreenshot: (screenshot: string) => void;
@@ -90,6 +98,8 @@ export const useProjectStore = create<ProjectState>((set) => ({
   statusMessage: '',
   dbProvider: 'none',
   authProvider: 'none',
+  runtimeError: null,
+  autoFixAttempts: 0,
   createFileRequest: 0,
   messages: [
     {
@@ -195,6 +205,15 @@ export const useProjectStore = create<ProjectState>((set) => ({
 
   setAuthProvider: (authProvider) => set({ authProvider }),
 
+  setRuntimeError: (runtimeError) => set({ runtimeError }),
+
+  clearRuntimeError: () => set({ runtimeError: null }),
+
+  incrementAutoFixAttempts: () =>
+    set((state) => ({ autoFixAttempts: state.autoFixAttempts + 1 })),
+
+  resetAutoFixAttempts: () => set({ autoFixAttempts: 0 }),
+
   addMessage: (message) =>
     set((state) => ({
       messages: [
@@ -251,6 +270,8 @@ export const useProjectStore = create<ProjectState>((set) => ({
       framework: 'nextjs',
       status: 'idle',
       statusMessage: '',
+      runtimeError: null,
+      autoFixAttempts: 0,
       logs: ['[System] Workspace reset.'],
     }),
 }));

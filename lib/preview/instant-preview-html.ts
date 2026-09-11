@@ -237,7 +237,8 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
             blobMap['./components/' + baseName] = blobUrl;
             blobMap['@/components/' + baseName] = blobUrl;
           } catch (compileErr) {
-            console.warn('[Compile Warning for ' + cleanPath + ']:', compileErr);
+            console.error('[Compile Error for ' + cleanPath + ']:', compileErr);
+            showError('Syntax/Compile Error in ' + cleanPath, compileErr.message || String(compileErr));
           }
         }
 

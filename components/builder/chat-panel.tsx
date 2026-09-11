@@ -56,6 +56,8 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     setIsStreaming,
     activeSteps,
     setActiveSteps,
+    runtimeError,
+    clearRuntimeError,
   } = useProjectStore();
 
   const [input, setInput] = useState('');
@@ -137,16 +139,25 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       return;
     }
 
-    // ── BUILD MODE ────────────────────────────────────────────
-    setStatus('generating', 'AI is building your project...');
+    // Detect if this is an auto-fix request targeting an active preview error
+    const isFixRequest = Boolean(runtimeError && /\b(fix|repair|error|broken|bug|issue|solve)\b/i.test(query));
+    const effectiveMode = isFixRequest ? 'auto-fix' : 'build';
+    const effectiveMessage = isFixRequest
+      ? `${query}\n\nACTIVE PREVIEW ERROR TO FIX:\n${runtimeError}`
+      : query;
+
+    // ── BUILD / AUTO-FIX MODE ─────────────────────────────────
+    setStatus('generating', isFixRequest ? 'AI is repairing the error...' : 'AI is building your project...');
     setIsStreaming(true);
-    addLog(`[AI] Building: "${query.slice(0, 60)}..."`);
+    addLog(`[AI] ${isFixRequest ? 'Auto-fixing' : 'Building'}: "${query.slice(0, 60)}..."`);
 
     // Real dynamic timeline — starts with "Analyzing" only
     const analyzeStep: TimelineStep = {
       id: 'analyze-1',
       type: 'thought',
-      label: `Analyzing request for ${framework.toUpperCase()}...`,
+      label: isFixRequest
+        ? `Diagnosing preview error for ${framework.toUpperCase()}...`
+        : `Analyzing request for ${framework.toUpperCase()}...`,
       status: 'running',
     };
     setActiveSteps([analyzeStep]);
@@ -156,15 +167,15 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: query,
+          message: effectiveMessage,
           history: messages
             .filter((m) => m.content && m.content.trim() !== '' && m.content !== '…')
             .map((m) => ({ role: m.role, content: m.content })),
-          files: isNewBuild ? {} : files,
+          files: isNewBuild && !isFixRequest ? {} : files,
           framework,
           dbProvider,
           authProvider,
-          mode: 'build',
+          mode: effectiveMode,
         }),
       });
 
@@ -174,7 +185,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       const decoder = new TextDecoder();
       let accumulatedText = '';
       let currentSteps: TimelineStep[] = [
-        { ...analyzeStep, status: 'completed', label: `Analyzed request for ${framework.toUpperCase()}` },
+        { ...analyzeStep, status: 'completed', label: isFixRequest ? `Diagnosed preview error` : `Analyzed request for ${framework.toUpperCase()}` },
       ];
       let trackedFiles = new Set<string>();
       let planningStepAdded = false;
@@ -297,6 +308,10 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         filesGenerated: fileList,
         showPreview: true,
       });
+
+      if (isFixRequest) {
+        clearRuntimeError();
+      }
 
       setStatus('ready', 'Application ready');
     } catch (err: any) {

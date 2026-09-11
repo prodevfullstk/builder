@@ -40,6 +40,12 @@ ${files[activeFile].slice(0, 8000)}
 \`\`\`
 
 User instruction: ${message}`;
+    } else if (mode === "auto-fix") {
+      const fileSummary = Object.entries(files)
+        .slice(0, 10)
+        .map(([path, content]) => `\`\`\`${path}\n${String(content).slice(0, 1200)}\n\`\`\``)
+        .join("\n\n");
+      userContent = `PREVIEW SANDBOX ERROR DETECTED:\n${message}\n\nCURRENT PROJECT FILES (${framework}):\n${fileSummary}\n\nPlease inspect the error, identify which file caused it, and repair it using <TOOL_CALL> (edit_file or write_file) or corrected <FILES> block.`;
     } else if (mode === "build" && Object.keys(files).length > 0) {
       // Provide existing project context for incremental edits
       const fileSummary = Object.entries(files)
