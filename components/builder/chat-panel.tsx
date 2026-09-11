@@ -79,9 +79,31 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     addMessage({ role: 'user', content: query });
 
     // Detect intent — AI agent handles both chat and build
-    const hasBuildVerb = /\b(build|create|make|design|generate|develop|add|fix|update|modify|refactor|implement)\b/i.test(query);
-    const hasAppNoun = /\b(app|website|site|page|landing|dashboard|saas|portfolio|store|blog|form|api|backend|component|navbar|hero|footer|modal)\b/i.test(query);
-    const isBuild = hasBuildVerb || (hasAppNoun && query.length > 20);
+    // 1. English + Bengali build verbs
+    const hasBuildVerb = /\b(build|create|make|design|generate|develop|add|fix|update|modify|refactor|implement)\b/i.test(query)
+      || /(বানাও|তৈরি|বানিয়ে|শুরু|কোড|করো|দাও|ডিজাইন|পরিবর্তন|যুক্ত|যোগ|সাজাও)/i.test(query);
+
+    // 2. English + Bengali app/web nouns
+    const hasAppNoun = /\b(app|website|site|page|landing|dashboard|saas|portfolio|store|blog|form|api|backend|component|navbar|hero|footer|modal)\b/i.test(query)
+      || /(সাইট|ওয়েবসাইট|অ্যাপ|পেজ|ল্যান্ডিং|ড্যাশবোর্ড|দোকান|স্টোর|ব্লগ|ফর্ম|কম্পোনেন্ট|প্রজেক্ট)/i.test(query);
+
+    // 3. Conversational continuation: user confirming after discussion (e.g. "go ahead", "start now", "yes", "do it", "হ্যাঁ", "শুরু করো")
+    const isAffirmativeConfirmation = /^(yes|yeah|yep|sure|ok|okay|go ahead|start|start now|proceed|let's do it|do it|build it|now build|please build|হ্যাঁ|শুরু করো|বানাও|তৈরি করো|ঠিক আছে|করো|এগিয়ে যাও)/i.test(query.trim());
+
+    const hasProjectContextInHistory = messages.length > 1 && messages.some((m) =>
+      m.role === 'assistant' && (
+        m.content.toLowerCase().includes('build') ||
+        m.content.toLowerCase().includes('website') ||
+        m.content.toLowerCase().includes('app') ||
+        m.content.includes('তৈরি') ||
+        m.content.includes('বানাতে') ||
+        m.content.includes('প্রজেক্ট')
+      )
+    );
+
+    const isConversationalBuildTrigger = isAffirmativeConfirmation && hasProjectContextInHistory;
+    const isBuild = hasBuildVerb || (hasAppNoun && query.length > 15) || isConversationalBuildTrigger;
+
     // BUG4 fix: only wipe existing files when truly starting from scratch
     // "create a navbar" / "add a hero section" should NOT wipe the project
     const hasExistingFiles = Object.keys(files).length > 0;
@@ -92,7 +114,6 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     if (!isBuild) {
       setStatus('generating', 'Thinking...');
       // ISSUE9 fix: stream chat replies token-by-token
-      // Add a placeholder message immediately with empty content
       let streamContent = '';
       try {
         const response = await fetch('/api/agent', {
@@ -127,7 +148,40 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         const flushed = decoder.decode();
         if (flushed) streamContent += flushed;
         updateStreamingMessage(streamContent.trim());
-        setStatus('idle');
+
+        // ── FAILSAFE: Check if the AI returned code in chat mode ──
+        const { toolCalls, explanation: chatToolExpl } = parseToolCalls(streamContent);
+        const { files: chatParsedFiles, aiExplanation: chatAiExpl } = parseFinalOutput(streamContent);
+
+        let recoveredFiles: Record<string, string> = {};
+        if (toolCalls.length > 0) {
+          const mcpRes = executeToolCalls(files, toolCalls);
+          recoveredFiles = mcpRes.updatedFiles;
+          mcpRes.logs.forEach((l) => addLog(l));
+        }
+        if (Object.keys(chatParsedFiles).length > 0) {
+          recoveredFiles = { ...recoveredFiles, ...chatParsedFiles };
+        }
+
+        if (Object.keys(recoveredFiles).length > 0) {
+          addLog(`[Failsafe] Detected ${Object.keys(recoveredFiles).length} files in chat response — moving to editor & preview.`);
+          const merged = { ...files, ...recoveredFiles };
+          setFiles(merged);
+
+          const entry = merged['app/page.tsx']
+            ? 'app/page.tsx'
+            : merged['src/App.tsx']
+            ? 'src/App.tsx'
+            : Object.keys(merged)[0];
+          if (entry) setActiveFile(entry);
+
+          // Clean chat message so raw code doesn't clutter the chat bubble
+          const cleanChatMsg = chatToolExpl || chatAiExpl || 'I have generated and updated the project files in your workspace!';
+          updateStreamingMessage(cleanChatMsg.trim());
+          setStatus('ready', 'Application ready');
+        } else {
+          setStatus('idle');
+        }
       } catch (err: any) {
         if (streamContent) {
           updateStreamingMessage(streamContent.trim() || 'Sorry, I had trouble connecting. Try again!');

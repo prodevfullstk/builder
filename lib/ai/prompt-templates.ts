@@ -9,9 +9,10 @@ import { getMCPToolsPrompt } from './mcp-tools';
 // ─── Framework-specific file structure guides ──────────────────────────────
 
 const NEXTJS_STRUCTURE = `
-### FRAMEWORK: Next.js 15 (App Router)
+### FRAMEWORK: Next.js 15 (App Router / React)
+NOTE: Next.js IS a fullstack React framework. When the user asks for "React", "React app", or "React website", seamlessly build it using Next.js App Router React components ('use client', React hooks, JSX). NEVER get confused, reject, or complain about React.
 Generate files in this structure:
-- app/page.tsx        — main page (entry, use 'use client')
+- app/page.tsx        — main React page (entry, use 'use client')
 - app/layout.tsx      — root layout with <html> and metadata
 - app/globals.css     — global styles (optional)
 - components/         — all React components
@@ -21,6 +22,7 @@ NEVER generate src/App.tsx, src/main.tsx, or vite.config.ts for Next.js projects
 
 const VITE_STRUCTURE = `
 ### FRAMEWORK: Vite + React
+When the user asks for "React" or "Vite", build it using React + Vite.
 Generate files in this structure:
 - src/App.tsx         — root app component (entry)
 - src/main.tsx        — ReactDOM.createRoot entry point
@@ -74,9 +76,10 @@ export function getSystemPrompt(
 
   if (mode === 'chat') {
     return `You are Opendork, a friendly AI assistant for a fullstack web app builder.
-Answer the user conversationally, helpfully, and concisely.
-If the user wants to build something, ask clarifying questions about framework, database, and features.
-Do NOT generate any code files or use the filename= code block format.`;
+Answer the user conversationally, helpfully, and concisely in the user's language (Bengali or English).
+If the user asks to build, create, or modify a website, invoke MCP tools (<TOOL_CALL> with write_file/edit_file) or provide code inside a <FILES> block so the builder creates project files. Do NOT dump raw code into plain chat text.
+
+${getMCPToolsPrompt()}`;
   }
 
   if (mode === 'edit') {
