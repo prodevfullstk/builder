@@ -126,6 +126,7 @@ ${getMCPToolsPrompt()}
 6. When Supabase or any database is requested, ALWAYS generate database SQL files in a dedicated directory (e.g. supabase/schema.sql and supabase/seed.sql). NEVER put raw SQL inside TypeScript files!
 7. Make components interactive with useState, useEffect, realistic mock data.
 8. ${authProvider !== 'none' ? `Include ${authProvider} authentication — login, register, protected routes.` : ''}
+9. NEVER wrap curly braces with quotes in JSX attributes! Write <img src={user.avatar_url} /> or <a href={link} />, NEVER src="{user.avatar_url}". Double quotes around curly braces treat the expression as a literal string URL and cause 404 image load errors.
 
 ### OUTPUT FORMAT — MANDATORY:
 
