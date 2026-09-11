@@ -124,23 +124,6 @@ export default function HomePage() {
             <div className="flex items-center gap-3">
               {/* User Profile / Login Menu */}
               <UserMenu />
-
-              {recentProjects.length > 0 && (
-                <button
-                  onClick={() => router.push(`/builder?id=${recentProjects[0].id}`)}
-                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-medium border border-zinc-800 transition-colors cursor-pointer"
-                >
-                  <Clock className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Resume Last ({recentProjects[0].name.slice(0, 14)})</span>
-                </button>
-              )}
-              <button
-                onClick={() => handleStartBuilding()}
-                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all shadow-md shadow-blue-900/30 hover:scale-105 cursor-pointer"
-              >
-                <span>Open Workspace</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
             </div>
           </div>
         </div>
