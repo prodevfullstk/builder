@@ -14,6 +14,7 @@ import {
   FolderKanban,
   Check,
   Edit2,
+  Github,
 } from 'lucide-react';
 import { useProjectStore, Framework, BuilderMode } from '@/lib/store/project-store';
 import { downloadProjectAsZip } from '@/lib/export/zip-export';
@@ -23,6 +24,7 @@ import {
   saveProjectToStorage,
 } from '@/lib/storage/project-storage';
 import { ProjectsModal } from './projects-modal';
+import { GitHubPushModal } from './github-push-modal';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
@@ -45,6 +47,7 @@ export function BuilderHeader() {
 
   const [isExporting, setIsExporting] = useState(false);
   const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false);
+  const [isGitHubModalOpen, setIsGitHubModalOpen] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(projectName);
 
@@ -254,6 +257,19 @@ export function BuilderHeader() {
             Reset
           </Button>
 
+          {/* GitHub Push & Code Scan */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsGitHubModalOpen(true)}
+            disabled={Object.keys(files).length === 0}
+            className="h-8 text-xs border-zinc-800 text-zinc-200 hover:text-white hover:bg-zinc-900 shadow-sm"
+            title="Scan & Push to GitHub repository"
+          >
+            <Github className="w-3.5 h-3.5 mr-1.5 text-zinc-100" />
+            GitHub
+          </Button>
+
           <Button
             variant="default"
             size="sm"
@@ -273,6 +289,14 @@ export function BuilderHeader() {
         onClose={() => setIsProjectsModalOpen(false)}
         onSelectProject={handleSelectProject}
         onNewProject={handleNewProject}
+      />
+
+      {/* GitHub Push & Code Scan Modal */}
+      <GitHubPushModal
+        isOpen={isGitHubModalOpen}
+        onClose={() => setIsGitHubModalOpen(false)}
+        files={files}
+        projectName={projectName}
       />
     </>
   );
