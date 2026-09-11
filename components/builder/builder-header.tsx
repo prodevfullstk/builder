@@ -25,10 +25,6 @@ import {
 import { ProjectsModal } from './projects-modal';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CreditsBadge } from '@/components/credits/credits-badge';
-import { CreditsModal } from '@/components/credits/credits-modal';
-import { UserMenu } from '@/components/auth/user-menu';
-import { AuthModal } from '@/components/auth/auth-modal';
 
 export function BuilderHeader() {
   const {
@@ -236,12 +232,6 @@ export function BuilderHeader() {
 
         {/* Right actions */}
         <div className="flex items-center gap-2">
-          {/* AI Credits Badge */}
-          <CreditsBadge />
-
-          {/* User Profile / Auth Menu */}
-          <UserMenu />
-
           <Button
             variant="outline"
             size="sm"
@@ -284,12 +274,6 @@ export function BuilderHeader() {
         onSelectProject={handleSelectProject}
         onNewProject={handleNewProject}
       />
-
-      {/* Credits & Tokenomics Modal */}
-      <CreditsModal />
-
-      {/* Supabase Auth & Cloud Sync Modal */}
-      <AuthModal />
     </>
   );
 }

@@ -24,7 +24,6 @@ import {
   SavedProjectSummary,
 } from '@/lib/storage/project-storage';
 import { Framework } from '@/lib/store/project-store';
-import { CreditsBadge } from '@/components/credits/credits-badge';
 import { CreditsModal } from '@/components/credits/credits-modal';
 import { UserMenu } from '@/components/auth/user-menu';
 import { AuthModal } from '@/components/auth/auth-modal';
