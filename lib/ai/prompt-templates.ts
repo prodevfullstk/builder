@@ -128,6 +128,15 @@ ${getMCPToolsPrompt()}
 8. ${authProvider !== 'none' ? `Include ${authProvider} authentication — login, register, protected routes.` : ''}
 9. NEVER wrap curly braces with quotes in JSX attributes! Write <img src={user.avatar_url} /> or <a href={link} />, NEVER src="{user.avatar_url}". Double quotes around curly braces treat the expression as a literal string URL and cause 404 image load errors.
 
+### 🎨 MULTIMODAL VISION & SCREENSHOT-TO-CODE INSTRUCTIONS:
+When the user attaches an image, screenshot, design wireframe, or UI mockup:
+- **Visual Deconstruction**: Faithfully analyze and replicate the visual layout, spacing, section hierarchy (navbar, hero, feature cards, forms, tables, modals), and UI composition shown in the image.
+- **Color Palette & Theme**: Match the color scheme, dark/light theme, background gradients, button colors, and accent highlights directly in Tailwind CSS classes.
+- **Typography & Details**: Replicate font weights, headings, subheadings, text placement, and badges as closely as possible.
+- **Icons & Visual Assets**: Match every icon in the screenshot using corresponding icons from lucide-react. Use high-quality Unsplash URLs (e.g. "https://images.unsplash.com/...") for image placeholders that match the subject matter of the screenshot.
+- **Interactivity**: Do not make it a static picture! Turn every button, tab, dropdown, modal, and filter visible in the screenshot into fully working, interactive React components with real state.
+- **Responsive Design**: Ensure the replicated design is fully responsive on mobile, tablet, and desktop screens with Tailwind breakpoints (sm:, md:, lg:).
+
 ### OUTPUT FORMAT — MANDATORY:
 
 Step 1: Stream each file as a markdown code block for live preview:

@@ -4,6 +4,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Send,
   Loader2,
+  Paperclip,
+  Image as ImageIcon,
+  X,
 } from 'lucide-react';
 
 // VS Code-style sidebar panel toggle icon
@@ -66,18 +69,45 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
   } = useProjectStore();
 
   const [input, setInput] = useState('');
+  const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [isMinimized, setIsMinimized] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-scroll messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, status, activeSteps]);
 
+  const handleImageFile = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = e.target?.result as string;
+      if (base64) setAttachedImage(base64);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          handleImageFile(file);
+          break;
+        }
+      }
+    }
+  };
+
   const handleSubmit = async (promptText: string) => {
     const query = promptText.trim();
-    if (!query || status === 'generating') return;
+    if ((!query && !attachedImage) || status === 'generating') return;
 
     // Check & deduct user credits before triggering generation
     const isFix = Boolean(runtimeError);
@@ -98,17 +128,25 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       return;
     }
 
+    const currentImage = attachedImage;
     setInput('');
+    setAttachedImage(null);
     onGenerateStart?.();
-    addMessage({ role: 'user', content: query });
+    addMessage({
+      role: 'user',
+      content: query || 'Build a web application based on this uploaded screenshot / mockup.',
+      image: currentImage || undefined,
+    });
+
+    const effectiveQuery = query || 'Build a web application based on this uploaded screenshot / mockup.';
 
     // Auto-detect framework from user prompt (overrides stale UI setting)
     let effectiveFramework = framework;
-    if (/\b(vite|react\s+vite|vite\s+react)\b/i.test(query)) {
+    if (/\b(vite|react\s+vite|vite\s+react)\b/i.test(effectiveQuery)) {
       effectiveFramework = 'vite';
-    } else if (/\b(astro)\b/i.test(query)) {
+    } else if (/\b(astro)\b/i.test(effectiveQuery)) {
       effectiveFramework = 'astro';
-    } else if (/\b(nextjs|next\.js|next\s+15|next\s+14)\b/i.test(query)) {
+    } else if (/\b(nextjs|next\.js|next\s+15|next\s+14)\b/i.test(effectiveQuery)) {
       effectiveFramework = 'nextjs';
     } else if (/\b(express|fastify|node\.js\s+backend|backend\s+only)\b/i.test(query)) {
       effectiveFramework = 'node';
@@ -194,6 +232,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: query,
+            image: currentImage || undefined,
             history: messages
               .filter((m) => m.content && m.content.trim() !== '' && m.content !== '…')
               .map((m) => ({ role: m.role, content: m.content })),
@@ -293,6 +332,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: effectiveMessage,
+          image: currentImage || undefined,
           history: messages
             .filter((m) => m.content && m.content.trim() !== '' && m.content !== '…')
             .map((m) => ({ role: m.role, content: m.content })),
@@ -488,7 +528,16 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
             }`}
           >
             {msg.role === 'user' ? (
-              <div className="max-w-[85%] rounded-2xl px-3.5 py-2 leading-relaxed bg-blue-600 text-white shadow-sm">
+              <div className="max-w-[85%] rounded-2xl px-3.5 py-2 leading-relaxed bg-blue-600 text-white shadow-sm space-y-2">
+                {msg.image && (
+                  <div className="rounded-xl overflow-hidden border border-blue-400/30 max-h-48 bg-zinc-950/40">
+                    <img
+                      src={msg.image}
+                      alt="Uploaded user screenshot"
+                      className="w-full object-contain max-h-48"
+                    />
+                  </div>
+                )}
                 <p className="whitespace-pre-wrap">{msg.content}</p>
               </div>
             ) : (
@@ -555,24 +604,75 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
           <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl opacity-0 group-focus-within:opacity-20 blur transition-opacity duration-300" />
           
           <div className="relative">
+            {/* Attached Image Thumbnail Preview */}
+            {attachedImage && (
+              <div className="relative inline-block mb-2 p-1 rounded-xl bg-zinc-950 border border-zinc-700 shadow-md">
+                <img
+                  src={attachedImage}
+                  alt="Uploaded reference"
+                  className="h-16 max-w-[160px] object-cover rounded-lg"
+                />
+                <button
+                  type="button"
+                  onClick={() => setAttachedImage(null)}
+                  className="absolute -top-1.5 -right-1.5 p-1 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 shadow-sm cursor-pointer"
+                  title="Remove image"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+                <span className="absolute bottom-1 left-1.5 px-1 py-0.2 rounded text-[8px] bg-black/80 text-zinc-300 font-mono">
+                  UI Mockup
+                </span>
+              </div>
+            )}
+
             <textarea
               ref={textareaRef}
               rows={3}
-              placeholder="Describe the website or fullstack web app you want to build (e.g. 'Gamified Habit & Quest Tracker with streak flames, daily rewards, and Supabase database')..."
+              placeholder={
+                attachedImage
+                  ? "Explain what to build/modify from this screenshot..."
+                  : "Describe changes, new features, or paste/upload a screenshot (Ctrl+V)..."
+              }
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onPaste={handlePaste}
               onKeyDown={handleKeyDown}
               disabled={status === 'generating'}
-              className="w-full px-4 py-3 pr-12 bg-zinc-900/80 backdrop-blur-sm border border-zinc-700/50 hover:border-zinc-600 focus:border-blue-500/50 rounded-xl text-sm text-zinc-100 placeholder:text-zinc-500/70 focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none transition-all duration-200 disabled:opacity-50 shadow-lg shadow-black/10"
+              className="w-full px-4 py-3 pl-10 pr-12 bg-zinc-900/80 backdrop-blur-sm border border-zinc-700/50 hover:border-zinc-600 focus:border-blue-500/50 rounded-xl text-sm text-zinc-100 placeholder:text-zinc-500/70 focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none transition-all duration-200 disabled:opacity-50 shadow-lg shadow-black/10"
               style={{ lineHeight: '1.5' }}
             />
+
+            {/* Hidden File Input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleImageFile(file);
+                e.target.value = '';
+              }}
+            />
+
+            {/* Attach Image Button (inside left bottom) */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={status === 'generating'}
+              className="absolute left-2.5 bottom-3 p-1.5 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-blue-400 transition-colors cursor-pointer disabled:opacity-40"
+              title="Attach UI screenshot or wireframe"
+            >
+              <Paperclip className="w-3.5 h-3.5" />
+            </button>
 
             {/* Send button with premium styling */}
             <button
               type="submit"
-              disabled={!input.trim() || status === 'generating'}
+              disabled={(!input.trim() && !attachedImage) || status === 'generating'}
               className="absolute right-3 bottom-3 p-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 disabled:from-zinc-800 disabled:to-zinc-800 text-white disabled:text-zinc-500 transition-all duration-200 shadow-lg shadow-blue-900/50 disabled:shadow-none hover:scale-105 active:scale-95"
-              title="Build with AI"
+              title="Send with AI"
             >
               {status === 'generating' ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

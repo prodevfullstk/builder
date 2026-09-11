@@ -8,6 +8,7 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  image?: string; // Base64 data URL of user uploaded screenshot or UI mockup
   timestamp: number;
   steps?: TimelineStep[];
   filesGenerated?: string[];

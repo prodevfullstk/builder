@@ -9,22 +9,27 @@
 
 import { getSystemPrompt } from "./prompt-templates";
 
+export type MultimodalPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
 export interface ChatMessagePayload {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: string | MultimodalPart[];
 }
 
 export interface StreamGenerationOptions {
   prompt: string;
+  image?: string; // Base64 data URL
   framework?: string;
   history?: ChatMessagePayload[];
 }
 
 const CANDIDATE_MODELS = [
-  "gemini-3.5-flash-lite",
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
   "gemini-3.5-flash",
-  "gemini-3.7-flash",
-  "gemini-3.8-flash",
 ];
 
 /** Retry fetch up to maxRetries times on 503 errors, with per-attempt AbortController timeout */
@@ -33,7 +38,7 @@ async function fetchWithRetry(
   options: RequestInit,
   maxRetries = 1,
   delayMs = 600,
-  timeoutMs = 12000
+  timeoutMs = 15000
 ): Promise<Response> {
   let lastRes: Response | null = null;
 
@@ -60,14 +65,23 @@ async function fetchWithRetry(
 }
 
 /**
- * BUG6 fix: Build message array ensuring system prompt is ALWAYS first,
- * independent of conversation length sliding window.
+ * Build message array ensuring system prompt is ALWAYS first,
+ * and user prompt incorporates image if provided.
  */
 function buildMessages(
   history: ChatMessagePayload[],
   prompt: string,
-  framework: string
+  framework: string,
+  image?: string
 ): ChatMessagePayload[] {
+  // Construct user content: string or array of parts if image exists
+  const userContent: string | MultimodalPart[] = image
+    ? [
+        { type: "text", text: prompt },
+        { type: "image_url", image_url: { url: image } },
+      ]
+    : prompt;
+
   // Separate system prompt from conversation turns
   const systemMessage = history.find((m) => m.role === "system");
   const conversationTurns = history.filter((m) => m.role !== "system");
@@ -76,21 +90,22 @@ function buildMessages(
   if (systemMessage) {
     return [
       systemMessage,                        // system always first
-      ...conversationTurns.slice(-7),       // last 7 turns max (3.5 exchanges)
-      { role: "user", content: prompt },
+      ...conversationTurns.slice(-7),       // last 7 turns max
+      { role: "user", content: userContent },
     ];
   }
 
-  // No system prompt provided — inject fallback (e.g. called from old /api/generate)
+  // No system prompt provided — inject fallback
   return [
     { role: "system", content: getSystemPrompt(framework, "none", "none", "build") },
     ...conversationTurns.slice(-6),
-    { role: "user", content: prompt },
+    { role: "user", content: userContent },
   ];
 }
 
 export async function createGeminiStream({
   prompt,
+  image,
   framework = "nextjs",
   history = [],
 }: StreamGenerationOptions): Promise<ReadableStream<Uint8Array>> {
@@ -106,7 +121,7 @@ export async function createGeminiStream({
   const apiUrl = rawUrl.trim().replace(/^['"]|['"]$/g, "").replace(/\/+$/, "");
   const endpoint = `${apiUrl}/chat/completions`;
 
-  const messages = buildMessages(history, prompt, framework);
+  const messages = buildMessages(history, prompt, framework, image);
 
   let response: Response | null = null;
   let lastError = "";

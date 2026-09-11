@@ -10,6 +10,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const {
       message,
+      image,
       history = [],
       files = {},
       activeFile = "",
@@ -57,6 +58,7 @@ User instruction: ${message}`;
 
     const stream = await createGeminiStream({
       prompt: userContent,
+      image: typeof image === "string" && image.startsWith("data:image/") ? image : undefined,
       framework,
       history: [
         { role: "system", content: systemPrompt },

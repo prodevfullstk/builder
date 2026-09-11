@@ -119,14 +119,30 @@ function BuilderWorkspace() {
           return;
         }
 
-        addMessage({ role: "user", content: initialPrompt });
+        // Check for cached reference image transferred from home page
+        let initialImage: string | undefined = undefined;
+        if (typeof window !== "undefined") {
+          try {
+            const cached = sessionStorage.getItem("opendork_init_image");
+            if (cached) {
+              initialImage = cached;
+              sessionStorage.removeItem("opendork_init_image");
+            }
+          } catch (err) {
+            console.warn("Could not read cached init image:", err);
+          }
+        }
+
+        addMessage({ role: "user", content: initialPrompt, image: initialImage });
         setStatus("generating", `Building ${targetFramework.toUpperCase()} project...`);
         setIsStreaming(true);
 
         const analyzeStep = {
           id: "init-analyze",
           type: "thought" as const,
-          label: `Analyzing request for ${targetFramework.toUpperCase()}...`,
+          label: initialImage
+            ? `Analyzing screenshot & visual mockup for ${targetFramework.toUpperCase()}...`
+            : `Analyzing request for ${targetFramework.toUpperCase()}...`,
           status: "running" as const,
         };
         setActiveSteps([analyzeStep]);
@@ -137,6 +153,7 @@ function BuilderWorkspace() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               message: initialPrompt,
+              image: initialImage,
               framework: targetFramework,
               dbProvider: urlDb || newProj.dbProvider,
               authProvider,

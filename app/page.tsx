@@ -14,6 +14,9 @@ import {
   Bot,
   CornerDownLeft,
   Wand2,
+  Image as ImageIcon,
+  Paperclip,
+  X,
 } from 'lucide-react';
 import {
   listSavedProjects,
@@ -64,15 +67,52 @@ const QUICK_CATEGORIES = [
 export default function HomePage() {
   const router = useRouter();
   const [prompt, setPrompt] = useState('');
+  const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [recentProjects, setRecentProjects] = useState<SavedProjectSummary[]>([]);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Load saved projects on client mount
   useEffect(() => {
     setRecentProjects(listSavedProjects());
   }, []);
 
+  const handleImageFile = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = e.target?.result as string;
+      if (base64) setAttachedImage(base64);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          handleImageFile(file);
+          break;
+        }
+      }
+    }
+  };
+
   const handleStartBuilding = (customPrompt?: string) => {
     const finalPrompt = (customPrompt || prompt).trim();
+    if (!finalPrompt && !attachedImage) return;
+
+    if (attachedImage && typeof window !== 'undefined') {
+      try {
+        sessionStorage.setItem('opendork_init_image', attachedImage);
+      } catch (err) {
+        console.warn('Could not cache init image to sessionStorage:', err);
+      }
+    }
+
     const params = new URLSearchParams();
     if (finalPrompt) params.set('prompt', finalPrompt);
 
@@ -178,27 +218,78 @@ export default function HomePage() {
               className="relative bg-zinc-900/95 backdrop-blur-2xl border-2 border-zinc-700/80 group-hover:border-zinc-600 group-focus-within:border-blue-500/90 rounded-2xl p-4 sm:p-5 shadow-2xl shadow-blue-950/50 text-left transition-all duration-300"
             >
 
+              {/* Attached Image Thumbnail Preview */}
+              {attachedImage && (
+                <div className="relative inline-block mb-3 p-1 rounded-xl bg-zinc-950 border border-zinc-800 shadow-md">
+                  <img
+                    src={attachedImage}
+                    alt="Uploaded reference"
+                    className="h-20 max-w-[200px] object-cover rounded-lg"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setAttachedImage(null)}
+                    className="absolute -top-2 -right-2 p-1 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 shadow-sm cursor-pointer"
+                    title="Remove image"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                  <span className="absolute bottom-1 left-1.5 px-1.5 py-0.5 rounded text-[9px] bg-black/70 text-zinc-300 font-mono">
+                    Reference UI
+                  </span>
+                </div>
+              )}
+
               {/* Textarea Input */}
               <textarea
                 rows={3}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
+                onPaste={handlePaste}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     handleStartBuilding();
                   }
                 }}
-                placeholder="Type what you want to create... (e.g. 'Gamified Habit Tracker with streak flames, daily quests, and level celebrations' or 'High-converting SaaS landing page')"
+                placeholder={
+                  attachedImage
+                    ? "Explain what to build from this screenshot (e.g. 'Build this exact landing page with dark theme and interactive buttons')..."
+                    : "Type what you want to create or paste/upload a screenshot (Ctrl+V)..."
+                }
                 className="w-full bg-transparent text-sm sm:text-base text-zinc-100 placeholder:text-zinc-500/80 focus:outline-none resize-none p-1 leading-relaxed font-sans"
+              />
+
+              {/* Hidden File Input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImageFile(file);
+                  e.target.value = '';
+                }}
               />
 
               {/* Chatbox Footer Action Bar */}
               <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-2 border-t border-zinc-800/70">
                 <div className="flex items-center gap-2 text-xs text-zinc-400">
-                  <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-950/60 border border-zinc-800 text-[11px]">
+                  {/* Attach Image Button */}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-950/80 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 transition-colors cursor-pointer text-xs font-medium"
+                    title="Upload UI screenshot or wireframe"
+                  >
+                    <Paperclip className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Attach Image</span>
+                  </button>
+
+                  <span className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-950/60 border border-zinc-800 text-[11px]">
                     <CornerDownLeft className="w-3 h-3 text-zinc-500" />
-                    <span>Press <strong>Enter ↵</strong> to build</span>
+                    <span>Press <strong>Enter ↵</strong></span>
                   </span>
                 </div>
 
@@ -206,7 +297,7 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => handleStartBuilding()}
-                  disabled={!prompt.trim()}
+                  disabled={!prompt.trim() && !attachedImage}
                   className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-500 disabled:from-zinc-800 disabled:to-zinc-800 text-white disabled:text-zinc-500 text-xs sm:text-sm font-semibold transition-all duration-200 shadow-lg shadow-blue-900/50 disabled:shadow-none hover:scale-[1.03] active:scale-[0.98] cursor-pointer disabled:cursor-not-allowed ml-auto"
                 >
                   <Wand2 className="w-4 h-4" />
