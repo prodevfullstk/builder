@@ -29,6 +29,8 @@ import {
 import { Framework } from '@/lib/store/project-store';
 import { CreditsBadge } from '@/components/credits/credits-badge';
 import { CreditsModal } from '@/components/credits/credits-modal';
+import { UserMenu } from '@/components/auth/user-menu';
+import { AuthModal } from '@/components/auth/auth-modal';
 
 const QUICK_CATEGORIES = [
   {
@@ -207,6 +209,9 @@ export default function HomePage() {
             <div className="flex items-center gap-3">
               {/* Credits Badge */}
               <CreditsBadge />
+
+              {/* User Profile / Login Menu */}
+              <UserMenu />
 
               {recentProjects.length > 0 && (
                 <button
@@ -621,6 +626,9 @@ export default function HomePage() {
 
       {/* AI Credits & Upgrade Modal */}
       <CreditsModal />
+
+      {/* Supabase Auth & Cloud Sync Modal */}
+      <AuthModal />
     </div>
   );
 }

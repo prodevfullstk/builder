@@ -27,6 +27,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CreditsBadge } from '@/components/credits/credits-badge';
 import { CreditsModal } from '@/components/credits/credits-modal';
+import { UserMenu } from '@/components/auth/user-menu';
+import { AuthModal } from '@/components/auth/auth-modal';
 
 export function BuilderHeader() {
   const {
@@ -237,6 +239,9 @@ export function BuilderHeader() {
           {/* AI Credits Badge */}
           <CreditsBadge />
 
+          {/* User Profile / Auth Menu */}
+          <UserMenu />
+
           <Button
             variant="outline"
             size="sm"
@@ -282,6 +287,9 @@ export function BuilderHeader() {
 
       {/* Credits & Tokenomics Modal */}
       <CreditsModal />
+
+      {/* Supabase Auth & Cloud Sync Modal */}
+      <AuthModal />
     </>
   );
 }
