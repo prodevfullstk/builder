@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
 import {
@@ -10,6 +10,7 @@ import {
   FileCode,
   X,
   Sparkles,
+  AlertTriangle,
 } from "lucide-react";
 import {
   listSavedProjects,
@@ -35,6 +36,7 @@ export function ProjectsModal({
   const { projectId: currentId } = useProjectStore();
   const [projects, setProjects] = useState<SavedProjectSummary[]>([]);
   const [newFramework, setNewFramework] = useState<Framework>("nextjs");
+  const [projectToDelete, setProjectToDelete] = useState<SavedProjectSummary | null>(null);
 
   const refreshList = () => {
     setProjects(listSavedProjects());
@@ -48,10 +50,15 @@ export function ProjectsModal({
 
   if (!isOpen) return null;
 
-  const handleDelete = (e: React.MouseEvent, id: string) => {
+  const handleRequestDelete = (e: React.MouseEvent, proj: SavedProjectSummary) => {
     e.stopPropagation();
-    if (confirm("Are you sure you want to delete this project? This cannot be undone.")) {
-      deleteProjectFromStorage(id);
+    setProjectToDelete(proj);
+  };
+
+  const handleConfirmDelete = () => {
+    if (projectToDelete) {
+      deleteProjectFromStorage(projectToDelete.id);
+      setProjectToDelete(null);
       refreshList();
     }
   };
@@ -165,8 +172,8 @@ export function ProjectsModal({
 
                   <div className="flex items-center gap-1 shrink-0">
                     <button
-                      onClick={(e) => handleDelete(e, proj.id)}
-                      className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                      onClick={(e) => handleRequestDelete(e, proj)}
+                      className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors cursor-pointer"
                       title="Delete project"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -178,6 +185,43 @@ export function ProjectsModal({
           )}
         </div>
       </div>
+
+      {/* Custom Modern Delete Confirmation Modal */}
+      {projectToDelete && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl p-5 flex flex-col gap-4 border-red-500/20">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center shrink-0 text-red-400">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-zinc-100 mb-1">
+                  Delete Project?
+                </h3>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Are you sure you want to delete <span className="text-zinc-200 font-medium">&quot;{projectToDelete.name}&quot;</span>? All generated files and chat history will be permanently erased.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800/80">
+              <button
+                onClick={() => setProjectToDelete(null)}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-zinc-100 hover:bg-zinc-900 border border-zinc-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium bg-red-600 hover:bg-red-500 text-white shadow-sm transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Project</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
