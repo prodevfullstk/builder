@@ -49,6 +49,15 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
 
   const baseImportsJson = JSON.stringify({ ...KNOWN_PACKAGES, ...extraImports });
 
+  // Collect all project CSS files to inject into a <style> tag
+  let projectCss = '';
+  for (const [path, content] of Object.entries(files)) {
+    if (path.endsWith('.css') && typeof content === 'string') {
+      projectCss += `\n/* ${path} */\n${content}\n`;
+    }
+  }
+  const safeProjectCss = projectCss.replace(/<\/style>/gi, '<\\/style>');
+
   // CRITICAL: Escape < and > so </script> inside index.html or code never closes the script tag prematurely!
   const safeFilesJson = JSON.stringify(files)
     .replace(/</g, '\\u003c')
@@ -62,6 +71,20 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Instant Preview</title>
+  
+  <script>
+    // Graceful image fallback for broken or placeholder avatar URLs
+    window.addEventListener('error', function(e) {
+      if (e.target && e.target.tagName === 'IMG') {
+        e.target.onerror = null;
+        e.target.src = 'https://api.dicebear.com/7.x/avataaars/svg?seed=GamifiedUser';
+      }
+    }, true);
+  </script>
+
+  <style id="project-custom-css">
+    ${safeProjectCss}
+  </style>
   
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -245,16 +268,32 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
         const blobMap = {};
         const usedFallbacks = [];
 
+        // Map CSS files to empty JS modules so browser ES modules never fail on CSS imports
+        const emptyCssBlob = new Blob(['export default {};'], { type: 'application/javascript' });
+        const emptyCssUrl = URL.createObjectURL(emptyCssBlob);
+        const cssStubs = [
+          './index.css', '../index.css', 'index.css',
+          './App.css', '../App.css', 'App.css',
+          './globals.css', '../globals.css', '@/globals.css', '@/app/globals.css',
+          './styles.css', '../styles.css', 'styles.css'
+        ];
+        for (const s of cssStubs) {
+          blobMap[s] = emptyCssUrl;
+        }
+
         // 1. Transpile all .ts / .tsx / .jsx / .js files
         for (const [rawPath, content] of Object.entries(mergedFiles)) {
-          if (!rawPath.match(/\\.(tsx|ts|jsx|js)$/)) continue;
+          if (!rawPath.match(/\.(tsx|ts|jsx|js)$/)) continue;
           
-          const cleanPath = rawPath.replace(/^\\/+/, '');
+          const cleanPath = rawPath.replace(/^\/+/, '');
           
-            // Strip 'use client' directives and auto-fix JSX src="{var}" or href="{var}" mistake
-            const cleanContent = content
+            // Strip 'use client' directives, CSS imports, JSX src="{var}" mistake, and mock avatar URL templates
+            let cleanContent = content
               .replace(/^['"]use client['"];?\s*/gm, '')
-              .replace(/\b(src|href)=["']\{([^}]+)\}["']/g, '$1={$2}');
+              .replace(/import\s+['"][^'"]+\.css['"];?\s*/g, '')
+              .replace(/\b(src|href)=["']\{([^}]+)\}["']/g, '$1={$2}')
+              .replace(/["']\{(?:user|profile)\.avatar_url\}["']/g, '"https://api.dicebear.com/7.x/avataaars/svg?seed=GamifiedUser"')
+              .replace(/\{profile\?\.avatar_url\s*\|\|\s*['"][^'"]+['"]\}/g, '{profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=GamifiedUser"}');
 
             const compiled = Babel.transform(cleanContent, {
               presets: [
