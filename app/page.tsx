@@ -216,14 +216,6 @@ export default function HomePage() {
       {/* Hero Section */}
       <main className="flex-1 flex flex-col items-center px-4 pt-12 pb-24">
         <div className="max-w-4xl mx-auto text-center w-full">
-          {/* Top Pill / Badge */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-zinc-900/90 border border-zinc-800 text-xs text-zinc-300 font-medium mb-6 shadow-sm">
-            <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-zinc-400">Powered by</span>
-            <span className="font-semibold text-white">Gemini 3.5 Flash</span>
-            <span className="text-zinc-600">•</span>
-            <span className="text-blue-400 font-mono text-[11px]">Instant Browser Sandbox</span>
-          </div>
 
           {/* Bold Hero Title with Underline */}
           <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white mb-4 leading-[1.15]">
