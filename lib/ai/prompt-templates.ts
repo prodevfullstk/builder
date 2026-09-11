@@ -126,7 +126,11 @@ Step 3: After the FILES block, write 2-3 sentences explaining what you built, wh
 
 ### IMPORTANT:
 - The <FILES> block must contain EVERY file you generated with COMPLETE content.
-- JSON must be valid — escape newlines as \\n, quotes as \\".
+- JSON must be strictly valid RFC 8259:
+  * All quotes inside code (JSX attributes like className="...", strings, imports) MUST be escaped as \\"
+  * All newlines inside code MUST be escaped as \\n
+  * Backslashes MUST be escaped as \\\\
+  * Do NOT leave raw unescaped double quotes inside the "content" values.
 - Never truncate file content inside the JSON block.
 - Framework: ${framework.toUpperCase()} — respect this. Do not substitute another framework.`;
 }

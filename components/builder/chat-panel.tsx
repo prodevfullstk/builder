@@ -97,7 +97,9 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: query,
-            history: messages.map((m) => ({ role: m.role, content: m.content })),
+            history: messages
+              .filter((m) => m.content && m.content.trim() !== '' && m.content !== '…')
+              .map((m) => ({ role: m.role, content: m.content })),
             framework,
             dbProvider,
             authProvider,
@@ -154,7 +156,9 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: query,
-          history: messages.map((m) => ({ role: m.role, content: m.content })),
+          history: messages
+            .filter((m) => m.content && m.content.trim() !== '' && m.content !== '…')
+            .map((m) => ({ role: m.role, content: m.content })),
           files: isNewBuild ? {} : files,
           framework,
           dbProvider,

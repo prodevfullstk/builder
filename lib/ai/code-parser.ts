@@ -159,7 +159,10 @@ export function extractStreamingState(markdown: string): StreamingParseResult {
     const isClosed = match[0].endsWith('```');
 
     // Skip fences without a filename in streaming mode if they look like explanations
-    const hasFilename = /(?:filename|path|file)=/i.test(header) || header.includes(':');
+    // BUG 3 fix: Check both fence header AND first-line comment so files using "// path/to/file" aren't skipped while unclosed
+    const firstLine = (content.split('\n')[0] || '').trim();
+    const hasFirstLinePath = /^\/\/\s*(?:filename:|path:|file:)?\s*[\w\-./]+\.[a-zA-Z0-9]+/i.test(firstLine);
+    const hasFilename = /(?:filename|path|file)=/i.test(header) || header.includes(':') || hasFirstLinePath;
     if (!hasFilename && !isClosed) continue; // Skip unclosed fences without filename
 
     const filePath = resolveFilePath(header, content, fileIndex++);
