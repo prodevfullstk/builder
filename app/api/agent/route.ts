@@ -42,6 +42,40 @@ ${files[activeFile].slice(0, 8000)}
 \`\`\`
 
 User instruction: ${message}`;
+    } else if (mode === "visual-fix") {
+      // Prioritize activeFile and key component files for screenshot-based repairs
+      const mentionedPaths = Object.keys(files).filter((p) =>
+        message.toLowerCase().includes(p.toLowerCase())
+      );
+      if (activeFile && !mentionedPaths.includes(activeFile) && files[activeFile]) {
+        mentionedPaths.unshift(activeFile);
+      }
+
+      const fileSummary = Object.entries(files)
+        .sort(([a], [b]) => {
+          const aPri = mentionedPaths.includes(a) ? 1 : 0;
+          const bPri = mentionedPaths.includes(b) ? 1 : 0;
+          return bPri - aPri;
+        })
+        .slice(0, 14)
+        .map(([path, content]) => {
+          const isTarget = mentionedPaths.includes(path);
+          const maxLen = isTarget ? 6000 : 2000;
+          return `\`\`\`${path}\n${String(content).slice(0, maxLen)}\n\`\`\``;
+        })
+        .join("\n\n");
+
+      userContent = `VISUAL BUG / LAYOUT FIX REQUEST BASED ON ATTACHED SCREENSHOT:
+${message}
+
+CURRENT PROJECT FILES (${framework}):
+${fileSummary}
+
+SURGICAL REPAIR INSTRUCTIONS:
+1. Carefully compare the attached screenshot with the existing code above to identify which component is causing the issue.
+2. ❌ DO NOT REWRITE OR REGENERATE WORKING FILES!
+3. Output ONLY the single modified file (or minimal set of files) that resolves the visual discrepancy.
+4. Use standard markdown code block: \`\`\`tsx filename=path/to/file.tsx with the full updated component code.`;
     } else if (mode === "auto-fix") {
       // Prioritize files cited in the error trace, package.json, and the active file
       const mentionedPaths = Object.keys(files).filter((p) =>

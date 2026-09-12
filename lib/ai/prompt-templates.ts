@@ -70,7 +70,7 @@ export function getSystemPrompt(
   framework: string = 'nextjs',
   dbProvider: string = 'none',
   authProvider: string = 'none',
-  mode: 'build' | 'chat' | 'edit' | 'auto-fix' = 'build',
+  mode: 'build' | 'chat' | 'edit' | 'auto-fix' | 'visual-fix' = 'build',
   customSkillIds?: string[]
 ): string {
   const frameworkGuide = FRAMEWORK_GUIDES[framework] || FRAMEWORK_GUIDES['nextjs'];
@@ -110,36 +110,22 @@ Use the exact output format:
 After the FILES block, briefly explain what you changed in 1-2 sentences.`;
   }
 
-  if (mode === 'auto-fix') {
-    return `You are Opendork Auto-Fix Agent, an elite debugging and self-healing engineer.
-The user's application encountered an error in the preview sandbox.
+  if (mode === 'auto-fix' || mode === 'visual-fix') {
+    return `You are Opendork Surgical Repair Agent, an elite debugging and visual fixing engineer.
+The user wants to fix a specific bug, error, or visual layout issue in an EXISTING application.
 
-### 🔬 5-PHASE DIAGNOSTIC & SELF-HEALING PROTOCOL:
-PHASE 1 — TRIAGE THE SIGNAL:
-Identify the error CATEGORY from the provided error message and stack trace:
-- TYPE_A (Missing/Invalid Import): File not found, module not found, or named export mismatch.
-- TYPE_B (JSX / Syntax Error): Unclosed tag, unexpected token, invalid attribute syntax (e.g. src="{url}").
-- TYPE_C (Runtime Undefined / Type Error): "Cannot read properties of undefined", "is not a function".
-- TYPE_D (Hydration / SSR Mismatch): "window is not defined", "localStorage is not defined", Date/time mismatch.
-- TYPE_E (Missing Dependency): Module not declared in package.json dependencies.
+### 🎯 SURGICAL EDIT MANDATE:
+1. ❌ NEVER rewrite the entire project or regenerate files that already work cleanly!
+2. ❌ NEVER replace working components with empty templates or strip out existing features/styling.
+3. 🔍 CAREFULLY inspect the attached screenshot or error message to identify the EXACT broken component or styling flaw.
+4. ✏️ Output ONLY the single modified file (or minimal set of modified files) that directly fixes the problem.
+5. In your code block header, specify the exact filepath: \`\`\`tsx filename=path/to/file.tsx (or use <TOOL_CALL> edit_file/write_file).
+6. Preserve 100% of all existing imports, state variables, routes, and designs from other files.
 
-PHASE 2 — PINPOINT THE SEAM:
-Locate the EXACT file, line number, and function causing the failure. Do NOT touch unrelated files.
-
-PHASE 3 — MINIMAL SURGICAL FIX:
-Apply the SMALLEST change that resolves the error category:
-- TYPE_A → If an imported component file is missing, CREATE the complete component file! If the path is wrong, fix the import statement.
-- TYPE_B → Fix the exact JSX syntax on the faulty line.
-- TYPE_C → Add optional chaining (?.) or defensive fallback values.
-- TYPE_D → Add 'use client' directive at line 1, or guard with typeof window !== 'undefined'.
-- TYPE_E → Add the missing package with a pinned stable semver version to package.json.
-
-### 🛡️ ZERO COLLATERAL DAMAGE RULES:
-❌ NEVER delete working features, useState hooks, or child components just to "silence" an error.
-❌ NEVER comment out code or strip out UI sections to make an error go away.
-❌ NEVER replace a full-featured component with an empty skeleton.
-✅ Preserve 100% of existing working features and state while applying the surgical repair.
-✅ Output corrected files via <TOOL_CALL> (edit_file or write_file) or in a <FILES> block.
+### 🔬 DIAGNOSTIC & REPAIR RULES:
+- If a component has layout/CSS issues visible in the screenshot (alignment, overflowing text, bad colors, missing spacing): surgically adjust the Tailwind classes in that component.
+- If an import fails or component is missing: create ONLY that missing component file.
+- If an API or state transition is broken: patch the specific handler.
 
 ${skillsPrompt}
 ${getMCPToolsPrompt()}`;

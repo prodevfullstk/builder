@@ -313,17 +313,27 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       return;
     }
 
-    // Detect if this is an auto-fix request targeting an active preview error
-    const isFixRequest = Boolean(runtimeError && /\b(fix|repair|error|broken|bug|issue|solve)\b/i.test(query));
-    const effectiveMode = isFixRequest ? 'auto-fix' : 'build';
-    const effectiveMessage = isFixRequest
+    // Detect if this is an auto-fix request targeting an active preview error OR screenshot visual fix
+    const isRuntimeFix = Boolean(runtimeError && /\b(fix|repair|error|broken|bug|issue|solve)\b/i.test(query));
+    const isScreenshotFix = Boolean(
+      hasExistingFiles &&
+      currentImage &&
+      (/\b(fix|repair|solve|change|update|modify|issue|bug|problem|error|not working|broken)\b/i.test(query) ||
+       /(সমস্যা|সমাধান|ঠিক|সংশোধন|কাজ করছে না|ভুল|পরিবর্তন)/i.test(query))
+    );
+
+    const isFixRequest = isRuntimeFix || isScreenshotFix;
+    const effectiveMode = isScreenshotFix ? 'visual-fix' : isRuntimeFix ? 'auto-fix' : 'build';
+    const effectiveMessage = isRuntimeFix
       ? `${query}\n\nACTIVE PREVIEW ERROR TO FIX:\n${runtimeError}`
+      : isScreenshotFix
+      ? `VISUAL ISSUE REPORTED VIA SCREENSHOT:\n${query}\n\nPlease inspect the screenshot and apply a surgical fix to only the affected component.`
       : query;
 
     // ── BUILD / AUTO-FIX MODE ─────────────────────────────────
-    setStatus('generating', isFixRequest ? 'AI is repairing the error...' : 'AI is building your project...');
+    setStatus('generating', isFixRequest ? 'AI is repairing the issue...' : 'AI is building your project...');
     setIsStreaming(true);
-    addLog(`[AI] ${isFixRequest ? 'Auto-fixing' : 'Building'}: "${query.slice(0, 60)}..."`);
+    addLog(`[AI] ${isFixRequest ? 'Repairing' : 'Building'}: "${query.slice(0, 60)}..."`);
 
     // Real dynamic timeline — starts with "Analyzing" only
     const analyzeStep: TimelineStep = {
@@ -398,6 +408,12 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
 
             if (!trackedFiles.has(currentStreamingFile)) {
               trackedFiles.add(currentStreamingFile);
+              // Mark previous file steps as completed
+              currentSteps = currentSteps.map((s) =>
+                s.type === 'file' && s.status === 'running'
+                  ? { ...s, status: 'completed' as const }
+                  : s
+              );
               const fileStep: TimelineStep = {
                 id: `step-${currentStreamingFile}`,
                 type: 'file',
@@ -665,7 +681,13 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         {status === 'generating' && (
           <div className="w-full text-xs">
             <BoltPlanCard
-              introText={`Building your ${framework.toUpperCase()} application with live components...`}
+              introText={
+                runtimeError
+                  ? `Diagnosing preview sandbox error and applying surgical repair for ${framework.toUpperCase()}...`
+                  : Object.keys(files).length > 0
+                  ? `Analyzing requested changes and updating your ${framework.toUpperCase()} application...`
+                  : `I'll build a complete ${framework.toUpperCase()} application. Let's inspect the setup and create the components.`
+              }
               steps={activeSteps}
               isStreaming={true}
             />

@@ -42,59 +42,61 @@ export function BoltPlanCard({
   const [isFilesExpanded, setIsFilesExpanded] = useState(false);
   const { setActiveFile } = useProjectStore();
 
-  // If explicit milestones are provided, use them; otherwise, dynamically convert steps into milestones
+  // If explicit milestones are provided, use them; otherwise, build a rich Bolt.new checklist
   const activeMilestones: PlanMilestone[] = React.useMemo(() => {
     if (milestones && milestones.length > 0) {
       return milestones;
     }
 
-    if (!steps || steps.length === 0) {
-      return [];
-    }
+    const fileSteps = steps.filter((s) => s.type === 'file');
+    const runningFileStep = fileSteps.find((s) => s.status === 'running');
+    const hasAnyFiles = fileSteps.length > 0;
+    const allFilesFinished = hasAnyFiles && fileSteps.every((s) => s.status === 'completed');
+    const previewStep = steps.find((s) => s.type === 'preview');
 
-    // Convert raw timeline steps into structured milestone tasks
-    const preliminary = steps.filter((s) => s.type === 'thought' || s.type === 'inspect' || s.type === 'design');
-    const files = steps.filter((s) => s.type === 'file');
-    const previews = steps.filter((s) => s.type === 'preview');
-
-    const result: PlanMilestone[] = [];
-
-    if (preliminary.length > 0) {
-      const anyRunning = preliminary.some((s) => s.status === 'running');
-      const allDone = preliminary.every((s) => s.status === 'completed');
-      result.push({
-        id: 'plan-prep',
-        label: 'Analyze project requirements and setup architecture',
-        status: anyRunning ? 'running' : allDone ? 'completed' : 'pending',
-      });
-    }
-
-    if (files.length > 0 || isStreaming) {
-      const activeFile = files.find((f) => f.status === 'running');
-      const allFilesDone = files.length > 0 && files.every((f) => f.status === 'completed');
-      result.push({
-        id: 'plan-files',
-        label: `Generate and assemble application components (${files.length} files)`,
-        status: activeFile || isStreaming ? 'running' : allFilesDone ? 'completed' : 'pending',
-        subAction: activeFile?.file
+    // Bolt.new 4-step canonical milestone pipeline
+    return [
+      {
+        id: 'milestone-prep',
+        label: 'Analyze project architecture and design system',
+        status: (hasAnyFiles || allFilesFinished || !isStreaming) ? 'completed' : 'running',
+      },
+      {
+        id: 'milestone-deps',
+        label: 'Configure core dependencies and framework config',
+        status: (hasAnyFiles || allFilesFinished || !isStreaming) ? 'completed' : (isStreaming ? 'running' : 'pending'),
+      },
+      {
+        id: 'milestone-build',
+        label: hasAnyFiles
+          ? `Build application components (${fileSteps.length} files)`
+          : 'Build application components and user interface',
+        status: allFilesFinished
+          ? 'completed'
+          : (isStreaming || runningFileStep)
+          ? 'running'
+          : 'pending',
+        subAction: runningFileStep?.file
           ? {
               type: 'write',
-              target: activeFile.file,
+              target: runningFileStep.file,
             }
           : undefined,
-      });
-    }
-
-    if (previews.length > 0) {
-      const p = previews[0];
-      result.push({
-        id: 'plan-verify',
-        label: p.label || 'Build and verify preview sandbox',
-        status: p.status,
-      });
-    }
-
-    return result;
+      },
+      {
+        id: 'milestone-verify',
+        label: 'Build and verify preview sandbox',
+        status: previewStep?.status === 'completed'
+          ? 'completed'
+          : previewStep?.status === 'running'
+          ? 'running'
+          : allFilesFinished && isStreaming
+          ? 'running'
+          : allFilesFinished && !isStreaming
+          ? 'completed'
+          : 'pending',
+      },
+    ];
   }, [milestones, steps, isStreaming]);
 
   // Determine files to show in drawer (from filesInspected or from file steps)
