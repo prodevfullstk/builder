@@ -69,6 +69,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     setActiveSteps,
     runtimeError,
     clearRuntimeError,
+    resetAutoFixAttempts,
   } = useProjectStore();
 
   const [input, setInput] = useState('');
@@ -135,6 +136,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     setInput('');
     setAttachedImage(null);
     onGenerateStart?.();
+    resetAutoFixAttempts();
     addMessage({
       role: 'user',
       content: query || 'Build a web application based on this uploaded screenshot / mockup.',

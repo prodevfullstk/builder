@@ -64,7 +64,7 @@ export function BoltPlanCard({
       {
         id: 'milestone-deps',
         label: 'Configure core dependencies and framework config',
-        status: (hasAnyFiles || allFilesFinished || !isStreaming) ? 'completed' : (isStreaming ? 'running' : 'pending'),
+        status: (hasAnyFiles || allFilesFinished || !isStreaming) ? 'completed' : 'pending',
       },
       {
         id: 'milestone-build',
@@ -73,7 +73,7 @@ export function BoltPlanCard({
           : 'Build application components and user interface',
         status: allFilesFinished
           ? 'completed'
-          : (isStreaming || runningFileStep)
+          : hasAnyFiles
           ? 'running'
           : 'pending',
         subAction: runningFileStep?.file

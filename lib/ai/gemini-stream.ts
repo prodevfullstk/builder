@@ -62,7 +62,7 @@ async function fetchWithRetry(
   options: RequestInit,
   maxRetries = 1,
   delayMs = 600,
-  timeoutMs = 45000
+  timeoutMs = 20000
 ): Promise<Response> {
   let lastRes: Response | null = null;
 
