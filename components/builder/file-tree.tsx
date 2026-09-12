@@ -68,7 +68,6 @@ export function FileTree() {
     if (createFileRequest > 0) {
       openCreateInFolder('');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createFileRequest]);
 
   const toggleFolder = (folderPath: string) => {

@@ -1,33 +1,89 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Sandbox } from '@vercel/sandbox';
 import { generateInstantPreviewHtml } from '@/lib/preview/instant-preview-html';
+import { authenticateRequest } from '@/lib/auth/server-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+export type SandboxLifecycleStatus =
+  | 'created'
+  | 'installing'
+  | 'building'
+  | 'build_failed'
+  | 'starting'
+  | 'runtime_ready'
+  | 'runtime_failed'
+  | 'stopped';
+
+export interface SandboxResponse {
+  success: boolean;
+  status: SandboxLifecycleStatus;
+  mode: 'visual_preview' | 'framework_runtime';
+  previewUrl?: string;
+  sandboxName?: string;
+  isReady?: boolean;
+  diagnostics?: string[];
+  skippedChecks?: Array<{ name: string; reason: string }>;
+  error?: string;
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { action = 'start', projectId = 'default', files = {}, framework = 'nextjs' } = body;
+    const body = await req.json().catch(() => ({}));
+    const {
+      action = 'start',
+      projectId,
+      files = {},
+      framework = 'nextjs',
+      mode = 'visual_preview', // 'visual_preview' | 'framework_runtime'
+    } = body;
 
-    const safeId = (projectId || 'default')
+    // 1. Strict Project ID Validation (No "default" or arbitrary fallback)
+    if (!projectId || typeof projectId !== 'string' || !projectId.trim() || projectId === 'default') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Validation Error: 'projectId' is required. Implicit fallback to 'default' project is forbidden.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // 2. Authentication Check
+    const authResult = await authenticateRequest(req, { allowDemo: true });
+    if (authResult.error) {
+      return NextResponse.json(
+        { success: false, error: authResult.error },
+        { status: authResult.status }
+      );
+    }
+
+    const safeId = projectId
       .replace(/[^a-zA-Z0-9-]/g, '')
       .slice(0, 24)
-      .toLowerCase() || 'default';
+      .toLowerCase();
     const sandboxName = `sbx-${safeId}`;
 
     if (action === 'stop') {
       try {
         const sandbox = await Sandbox.get({ name: sandboxName });
         await sandbox.stop();
-        return NextResponse.json({ success: true, status: 'stopped' });
+        return NextResponse.json({
+          success: true,
+          status: 'stopped',
+          mode,
+        });
       } catch {
-        return NextResponse.json({ success: true, status: 'already_stopped' });
+        return NextResponse.json({
+          success: true,
+          status: 'stopped',
+          mode,
+        });
       }
     }
 
-    // Default: 'start' / 'sync'
-    // 1. Get or create persistent Vercel Sandbox with port 3000 exposed
+    // 3. Get or create persistent Vercel Sandbox with port 3000 exposed
     const sandbox = await Sandbox.getOrCreate({
       name: sandboxName,
       ports: [3000],
@@ -36,45 +92,41 @@ export async function POST(req: NextRequest) {
 
     const previewUrl = sandbox.domain(3000);
 
-    // 2. Prepare files to write inside the microVM
-    const filesToWrite: { path: string; content: string }[] = [];
-    const hasIndexHtml = Object.keys(files).some((f) => f.toLowerCase() === 'index.html' || f.endsWith('/index.html'));
-    const hasTsxOrJsx = Object.keys(files).some((f) => /\.(tsx|jsx|ts)$/i.test(f));
-    const rawIndexHtml = String(Object.entries(files).find(([f]) => f.toLowerCase() === 'index.html' || f.endsWith('/index.html'))?.[1] || '');
-    const indexHasTsx = /<script[^>]*src=["'][^"']*\.(tsx|jsx|ts)["']/i.test(rawIndexHtml);
+    // ── MODE A: VISUAL PREVIEW (Static HTML bundle) ──
+    if (mode === 'visual_preview') {
+      const filesToWrite: { path: string; content: string }[] = [];
+      const hasIndexHtml = Object.keys(files).some((f) => f.toLowerCase() === 'index.html' || f.endsWith('/index.html'));
+      const hasTsxOrJsx = Object.keys(files).some((f) => /\.(tsx|jsx|ts)$/i.test(f));
+      const rawIndexHtml = String(Object.entries(files).find(([f]) => f.toLowerCase() === 'index.html' || f.endsWith('/index.html'))?.[1] || '');
+      const indexHasTsx = /<script[^>]*src=["'][^"']*\.(tsx|jsx|ts)["']/i.test(rawIndexHtml);
 
-    // If project contains TSX/JSX, or index.html references TSX/JSX, or no index.html is present:
-    // compile and provide the preview bundle HTML for /vercel/app/index.html
-    const shouldCompileIndex = hasTsxOrJsx || indexHasTsx || !hasIndexHtml;
+      const shouldCompileIndex = hasTsxOrJsx || indexHasTsx || !hasIndexHtml;
 
-    if (shouldCompileIndex && Object.keys(files).length > 0) {
-      const generatedHtml = generateInstantPreviewHtml(files);
-      filesToWrite.push({
-        path: '/vercel/app/index.html',
-        content: generatedHtml,
-      });
-    }
-
-    // Write all project files to /vercel/app
-    for (const [filePath, content] of Object.entries(files)) {
-      if (typeof content !== 'string') continue;
-      const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
-      if (shouldCompileIndex && (cleanPath.toLowerCase() === 'index.html' || cleanPath.endsWith('/index.html'))) {
-        // Keep original user index as index.source.html so we don't overwrite the compiled preview bundle
+      if (shouldCompileIndex && Object.keys(files).length > 0) {
+        const generatedHtml = generateInstantPreviewHtml(files);
         filesToWrite.push({
-          path: `/vercel/app/index.source.html`,
+          path: '/vercel/app/index.html',
+          content: generatedHtml,
+        });
+      }
+
+      for (const [filePath, content] of Object.entries(files)) {
+        if (typeof content !== 'string') continue;
+        const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+        if (shouldCompileIndex && (cleanPath.toLowerCase() === 'index.html' || cleanPath.endsWith('/index.html'))) {
+          filesToWrite.push({
+            path: `/vercel/app/index.source.html`,
+            content,
+          });
+          continue;
+        }
+        filesToWrite.push({
+          path: `/vercel/app/${cleanPath}`,
           content,
         });
-        continue;
       }
-      filesToWrite.push({
-        path: `/vercel/app/${cleanPath}`,
-        content,
-      });
-    }
 
-    // 3. Write intelligent runner server
-    const serverScript = `
+      const serverScript = `
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -97,7 +149,6 @@ const mimeTypes = {
 };
 
 const server = http.createServer((req, res) => {
-  // CORS & Iframe embedding headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', '*');
@@ -119,7 +170,6 @@ const server = http.createServer((req, res) => {
   if (reqPath === '/') reqPath = '/index.html';
   let filePath = path.join('/vercel/app', reqPath);
 
-  // Search in /src or /public if file not found at root path
   if (!fs.existsSync(filePath)) {
     const srcCandidate = path.join('/vercel/app/src', reqPath);
     if (fs.existsSync(srcCandidate)) {
@@ -137,15 +187,11 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'text/plain' });
     res.end(fs.readFileSync(filePath));
   } else {
-    // Single Page Application fallback only for non-asset navigation routes
-    const isAsset = /\\.(js|mjs|ts|tsx|jsx|css|json|png|jpg|jpeg|svg|ico|woff2|map)$/i.test(reqPath);
-    if (!isAsset) {
-      const indexPath = '/vercel/app/index.html';
-      if (fs.existsSync(indexPath)) {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(fs.readFileSync(indexPath));
-        return;
-      }
+    const indexPath = '/vercel/app/index.html';
+    if (fs.existsSync(indexPath)) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(fs.readFileSync(indexPath));
+      return;
     }
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not Found');
@@ -153,46 +199,126 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(3000, '0.0.0.0', () => {
-  console.log('App server active on port 3000');
+  console.log('Visual preview server active on port 3000');
 });
 `;
 
-    filesToWrite.push({
-      path: '/vercel/server.mjs',
-      content: serverScript,
-    });
+      filesToWrite.push({
+        path: '/vercel/server.mjs',
+        content: serverScript,
+      });
 
-    // Write files to sandbox
+      await sandbox.writeFiles(filesToWrite);
+
+      await sandbox.runCommand({
+        cmd: 'node',
+        args: ['/vercel/server.mjs'],
+        detached: true,
+      });
+
+      // Poll preview URL
+      let isReady = false;
+      for (let i = 0; i < 10; i++) {
+        try {
+          const ping = await fetch(previewUrl, { method: 'GET' });
+          if (ping.ok || ping.status === 200 || ping.status === 304) {
+            isReady = true;
+            break;
+          }
+        } catch {
+          // waiting for port binding
+        }
+        await new Promise((r) => setTimeout(r, 600));
+      }
+
+      // Explicitly label as visual_preview, NOT framework_runtime!
+      return NextResponse.json({
+        success: true,
+        previewUrl,
+        sandboxName,
+        status: isReady ? 'runtime_ready' : 'starting',
+        mode: 'visual_preview',
+        isReady,
+        skippedChecks: [
+          { name: 'framework_build', reason: 'Visual preview mode runs pre-compiled instant DOM bundle without node_modules build' },
+          { name: 'server_components_runtime', reason: 'Instant preview does not execute Node.js SSR/Server Actions runtime' },
+          { name: 'api_route_execution', reason: 'Vercel Sandbox visual preview serves static assets; backend API routes require framework runtime' },
+        ],
+      });
+    }
+
+    // ── MODE B: FULL FRAMEWORK RUNTIME ──
+    const filesToWrite: { path: string; content: string }[] = [];
+    for (const [filePath, content] of Object.entries(files)) {
+      if (typeof content !== 'string') continue;
+      const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+      filesToWrite.push({
+        path: `/vercel/app/${cleanPath}`,
+        content,
+      });
+    }
+
     await sandbox.writeFiles(filesToWrite);
 
-    // 4. Start server in detached mode
+    // 1. Attempt Package Installation
+    const installResult = await sandbox.runCommand({
+      cmd: 'npm',
+      args: ['install', '--prefix', '/vercel/app', '--prefer-offline'],
+    });
+
+    if (installResult.exitCode !== 0) {
+      return NextResponse.json({
+        success: false,
+        status: 'build_failed',
+        mode: 'framework_runtime',
+        error: `Dependency installation failed: ${installResult.stderr || installResult.stdout}`,
+      });
+    }
+
+    // 2. Build Verification Check
+    const buildResult = await sandbox.runCommand({
+      cmd: 'npm',
+      args: ['run', 'build', '--prefix', '/vercel/app'],
+    });
+
+    if (buildResult.exitCode !== 0) {
+      return NextResponse.json({
+        success: false,
+        status: 'build_failed',
+        mode: 'framework_runtime',
+        error: `Framework build failed: ${buildResult.stderr || buildResult.stdout}`,
+      });
+    }
+
+    // 3. Start Framework Runtime
     await sandbox.runCommand({
-      cmd: 'node',
-      args: ['/vercel/server.mjs'],
+      cmd: 'npm',
+      args: ['start', '--prefix', '/vercel/app', '--', '-p', '3000'],
       detached: true,
     });
 
-    // 5. Poll preview URL to ensure server is ready
-    let isReady = false;
-    for (let i = 0; i < 10; i++) {
+    // 4. HTTP Smoke Test
+    let isSmokeReady = false;
+    for (let i = 0; i < 15; i++) {
       try {
         const ping = await fetch(previewUrl, { method: 'GET' });
         if (ping.ok || ping.status === 200 || ping.status === 304) {
-          isReady = true;
+          isSmokeReady = true;
           break;
         }
       } catch {
         // waiting for port binding
       }
-      await new Promise((r) => setTimeout(r, 600));
+      await new Promise((r) => setTimeout(r, 800));
     }
 
     return NextResponse.json({
-      success: true,
+      success: isSmokeReady,
       previewUrl,
       sandboxName,
-      status: 'ready',
-      isReady,
+      status: isSmokeReady ? 'runtime_ready' : 'runtime_failed',
+      mode: 'framework_runtime',
+      isReady: isSmokeReady,
     });
   } catch (error: any) {
     console.error('Vercel Sandbox API Error:', error);
@@ -209,11 +335,27 @@ server.listen(3000, '0.0.0.0', () => {
 export async function DELETE(req: NextRequest) {
   try {
     const url = new URL(req.url);
-    const projectId = url.searchParams.get('projectId') || 'default';
+    const projectId = url.searchParams.get('projectId');
+
+    if (!projectId || !projectId.trim() || projectId === 'default') {
+      return NextResponse.json(
+        { success: false, error: "Validation Error: 'projectId' parameter is required to stop sandbox." },
+        { status: 400 }
+      );
+    }
+
+    const authResult = await authenticateRequest(req, { allowDemo: true });
+    if (authResult.error) {
+      return NextResponse.json(
+        { success: false, error: authResult.error },
+        { status: authResult.status }
+      );
+    }
+
     const safeId = projectId
       .replace(/[^a-zA-Z0-9-]/g, '')
       .slice(0, 24)
-      .toLowerCase() || 'default';
+      .toLowerCase();
     const sandboxName = `sbx-${safeId}`;
 
     try {

@@ -258,20 +258,36 @@ export async function pushProjectToGitHub(
     const newCommitData = await newCommitRes.json();
     const newCommitSha = newCommitData.sha;
 
-    // 7. Update branch reference
-    onProgress?.(`Updating ${branch} branch reference...`);
+    // 7. Update branch reference safely (no force push)
+    // Check if remote branch has moved since we fetched baseCommitSha
+    const latestRefRes = await fetch(`${GITHUB_API}/repos/${owner}/${repo}/git/ref/heads/${branch}`, { headers });
+    if (latestRefRes.ok) {
+      const latestRefData = await latestRefRes.json();
+      const currentRemoteSha = latestRefData.object?.sha;
+      if (currentRemoteSha && currentRemoteSha !== baseCommitSha) {
+        return {
+          success: false,
+          error: `Push rejected: remote branch "${branch}" has changed (head is ${currentRemoteSha}, expected ${baseCommitSha}). Remote conflict detected; non-fast-forward overwrites are prohibited.`,
+        };
+      }
+    }
+
+    onProgress?.(`Updating ${branch} branch reference safely...`);
     const updateRefRes = await fetch(`${GITHUB_API}/repos/${owner}/${repo}/git/refs/heads/${branch}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({
         sha: newCommitSha,
-        force: true,
+        force: false,
       }),
     });
 
     if (!updateRefRes.ok) {
       const refErr = await updateRefRes.json().catch(() => ({}));
-      return { success: false, error: refErr.message || 'Failed to update branch reference.' };
+      return {
+        success: false,
+        error: refErr.message || 'Failed to update branch reference. The remote branch may have moved or force push was rejected.',
+      };
     }
 
     onProgress?.('Pushed successfully!');

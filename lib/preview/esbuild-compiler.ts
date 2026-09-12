@@ -8,7 +8,6 @@
 const ESBUILD_CDN = 'https://esm.sh/esbuild-wasm@0.28.2';
 const ESBUILD_WASM_URL = 'https://unpkg.com/esbuild-wasm@0.28.2/esbuild.wasm';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let esbuildInstance: any = null;
 let initPromise: Promise<void> | null = null;
 
@@ -51,7 +50,6 @@ function normalizePath(path: string): string {
   return '/' + out.join('/');
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getLoader(path: string): any {
   if (path.endsWith('.tsx')) return 'tsx';
   if (path.endsWith('.ts')) return 'ts';
@@ -71,9 +69,7 @@ function createVirtualFsPlugin(files: Record<string, string>) {
 
   return {
     name: 'virtual-fs',
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setup(build: any) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       build.onResolve({ filter: /.*/ }, (args: any) => {
         if (args.path.startsWith('https://') || args.path.startsWith('http://')) {
           return { path: args.path, external: true };
@@ -110,7 +106,6 @@ function createVirtualFsPlugin(files: Record<string, string>) {
         return { path: args.path, external: true };
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       build.onLoad({ filter: /.*/, namespace: 'virtual' }, (args: any) => {
         const clean = cleanPath(args.path).replace(/^\/+/, '');
         let content = lookup[clean] ?? lookup['/' + clean];

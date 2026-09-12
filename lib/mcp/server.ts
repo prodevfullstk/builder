@@ -10,23 +10,28 @@ import {
 } from "./catalog";
 import { SUGGESTED_PROMPTS } from "../ai/prompt-templates";
 import { runCodeScan } from "../export/code-scanner";
+import {
+  AuthoritativeProject,
+  getServerProject,
+  registerServerProject,
+  listServerProjectsForOwner,
+} from "../storage/project-authority";
 
-// In-memory / server-side project cache for MCP sessions
-const memoryProjects: Map<string, { id: string; name: string; framework: string; files: Record<string, string>; updatedAt: number }> = new Map();
+// In-memory project store for MCP sessions
+const memoryProjects: Map<string, { id: string; name: string; framework: string; files: Record<string, string>; updatedAt: number; owner_id?: string }> = new Map();
 
-// Seed a default demo project if empty
-if (memoryProjects.size === 0) {
-  memoryProjects.set("demo-saas", {
-    id: "demo-saas",
-    name: "AI Voice Agent SaaS",
-    framework: "nextjs",
-    files: {
-      "package.json": JSON.stringify({ name: "ai-voice-saas", dependencies: { react: "^19.0.0", next: "^15.0.0" } }, null, 2),
-      "app/page.tsx": `'use client';\n\nexport default function Page() { return <div>Welcome to AI Voice SaaS</div>; }`,
-    },
-    updatedAt: Date.now(),
-  });
-}
+// Seed initial demo project with explicit owner
+memoryProjects.set("demo-saas", {
+  id: "demo-saas",
+  name: "AI Voice Agent SaaS",
+  framework: "nextjs",
+  owner_id: "system-demo",
+  files: {
+    "package.json": JSON.stringify({ name: "ai-voice-saas", dependencies: { react: "^19.0.0", next: "^15.0.0" } }, null, 2),
+    "app/page.tsx": `'use client';\n\nexport default function Page() { return <div>Welcome to AI Voice SaaS</div>; }`,
+  },
+  updatedAt: Date.now(),
+});
 
 function makeError(code: number, message: string, hint?: string, retryable = false): MCPErrorEnvelope {
   return {
@@ -40,7 +45,15 @@ function makeError(code: number, message: string, hint?: string, retryable = fal
   };
 }
 
-export async function handleMcpRequest(request: JsonRpcRequest): Promise<JsonRpcResponse> {
+export interface McpRequestContext {
+  userId?: string;
+  authMode?: 'real' | 'demo';
+}
+
+export async function handleMcpRequest(
+  request: JsonRpcRequest,
+  context?: McpRequestContext
+): Promise<JsonRpcResponse> {
   const { id, method, params = {} } = request;
 
   try {
@@ -90,7 +103,7 @@ export async function handleMcpRequest(request: JsonRpcRequest): Promise<JsonRpc
           };
         }
 
-        const result = await executeMcpTool(toolName, args);
+        const result = await executeMcpTool(toolName, args, context);
         return {
           jsonrpc: "2.0",
           id,
@@ -217,7 +230,35 @@ export async function handleMcpRequest(request: JsonRpcRequest): Promise<JsonRpc
   }
 }
 
-async function executeMcpTool(name: string, args: Record<string, any>): Promise<any> {
+/**
+ * Resolve project explicitly by ID without any arbitrary "first project" fallback
+ */
+function resolveProjectExplicit(projectId: any): { id: string; name: string; framework: string; files: Record<string, string>; updatedAt: number; owner_id?: string } {
+  if (!projectId || typeof projectId !== 'string' || !projectId.trim()) {
+    throw new Error("Validation Error: 'projectId' parameter is required. Implicit fallback to arbitrary or first project is strictly forbidden.");
+  }
+
+  const cleanId = projectId.trim();
+  const memoryProj = memoryProjects.get(cleanId);
+  if (memoryProj) return memoryProj;
+
+  // Check authoritative project registry
+  const authProj = getServerProject(cleanId);
+  if (authProj) {
+    return {
+      id: authProj.id,
+      name: authProj.name,
+      framework: authProj.framework,
+      files: authProj.files,
+      updatedAt: authProj.updatedAt,
+      owner_id: authProj.owner_id,
+    };
+  }
+
+  throw new Error(`Project '${cleanId}' not found. Verify the project ID and call list_projects.`);
+}
+
+async function executeMcpTool(name: string, args: Record<string, any>, context?: McpRequestContext): Promise<any> {
   switch (name) {
     case "list_projects": {
       const list = Array.from(memoryProjects.values()).map((p) => ({
@@ -231,10 +272,7 @@ async function executeMcpTool(name: string, args: Record<string, any>): Promise<
     }
 
     case "get_project": {
-      const proj = memoryProjects.get(args.projectId);
-      if (!proj) {
-        throw new Error(`Project '${args.projectId}' not found. Call list_projects first.`);
-      }
+      const proj = resolveProjectExplicit(args.projectId);
       return {
         id: proj.id,
         name: proj.name,
@@ -247,48 +285,77 @@ async function executeMcpTool(name: string, args: Record<string, any>): Promise<
     case "create_project": {
       const id = "proj_" + Math.random().toString(36).substring(2, 9);
       const framework = args.framework || "nextjs";
+      const ownerId = context?.userId || "anonymous";
       const newProj = {
         id,
         name: args.name || "New Project",
         framework,
+        owner_id: ownerId,
         files: {
           "package.json": JSON.stringify({ name: args.name?.toLowerCase().replace(/[^a-z0-9]/g, "-"), framework }, null, 2),
         },
         updatedAt: Date.now(),
       };
       memoryProjects.set(id, newProj);
+      registerServerProject({
+        id,
+        owner_id: ownerId,
+        name: newProj.name,
+        framework: framework as any,
+        files: newProj.files,
+        messages: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
       return { success: true, project: newProj };
     }
 
     case "list_files": {
-      const proj = args.projectId ? memoryProjects.get(args.projectId) : memoryProjects.values().next().value;
-      if (!proj) throw new Error("No active project found.");
+      const proj = resolveProjectExplicit(args.projectId);
       return { files: Object.keys(proj.files) };
     }
 
     case "get_file": {
-      const proj = args.projectId ? memoryProjects.get(args.projectId) : memoryProjects.values().next().value;
-      if (!proj) throw new Error("No active project found.");
+      const proj = resolveProjectExplicit(args.projectId);
       const path = String(args.path || "").replace(/^\/+/, "");
+      if (!path) {
+        throw new Error("Validation Error: 'path' parameter is required.");
+      }
       if (!proj.files[path]) {
-        throw new Error(`File '${path}' does not exist in project. Call list_files to see available paths.`);
+        throw new Error(`File '${path}' does not exist in project '${proj.id}'. Call list_files to see available paths.`);
       }
       return { path, content: proj.files[path] };
     }
 
     case "write_file": {
-      const proj = args.projectId ? memoryProjects.get(args.projectId) : memoryProjects.values().next().value;
-      if (!proj) throw new Error("No active project found.");
+      const proj = resolveProjectExplicit(args.projectId);
       const path = String(args.path || "").replace(/^\/+/, "");
+      if (!path) {
+        throw new Error("Validation Error: 'path' parameter is required.");
+      }
+      // SECURITY: MCP tools stage changes only. The calling client must pass the
+      // returned candidateDiff through evaluateCandidateChanges before committing
+      // to the authoritative project store. Direct mutation here only affects the
+      // MCP session's in-memory copy — not the builder's authoritative Zustand store.
+      const previousContent = proj.files[path] ?? null;
       proj.files[path] = String(args.content || "");
       proj.updatedAt = Date.now();
-      return { success: true, path, lines: proj.files[path].split("\n").length };
+      return {
+        success: true,
+        path,
+        lines: proj.files[path].split("\n").length,
+        staged: true,
+        note: "Change staged in MCP session. Call evaluate_candidate or pass candidateDiff to the builder for authoritative commit.",
+        candidateDiff: { [path]: String(args.content || "") },
+      };
     }
 
     case "edit_file": {
-      const proj = args.projectId ? memoryProjects.get(args.projectId) : memoryProjects.values().next().value;
-      if (!proj) throw new Error("No active project found.");
+      const proj = resolveProjectExplicit(args.projectId);
       const path = String(args.path || "").replace(/^\/+/, "");
+      if (!path) {
+        throw new Error("Validation Error: 'path' parameter is required.");
+      }
       if (!proj.files[path]) {
         throw new Error(`Cannot edit '${path}' because it does not exist. Call write_file to create it.`);
       }
@@ -298,23 +365,39 @@ async function executeMcpTool(name: string, args: Record<string, any>): Promise<
       if (!existing.includes(target)) {
         throw new Error(`targetContent not found in ${path}. Verify exact lines before calling edit_file.`);
       }
+      // SECURITY: staged change only — same semantics as write_file
       proj.files[path] = existing.replace(target, replacement);
       proj.updatedAt = Date.now();
-      return { success: true, path, action: "updated" };
+      return {
+        success: true,
+        path,
+        action: "updated",
+        staged: true,
+        note: "Change staged in MCP session. Pass candidateDiff to the builder for authoritative commit.",
+        candidateDiff: { [path]: proj.files[path] },
+      };
     }
 
     case "delete_file": {
-      const proj = args.projectId ? memoryProjects.get(args.projectId) : memoryProjects.values().next().value;
-      if (!proj) throw new Error("No active project found.");
+      const proj = resolveProjectExplicit(args.projectId);
       const path = String(args.path || "").replace(/^\/+/, "");
+      if (!path) {
+        throw new Error("Validation Error: 'path' parameter is required.");
+      }
+      // SECURITY: staged deletion — builder must confirm via candidate pipeline
       delete proj.files[path];
       proj.updatedAt = Date.now();
-      return { success: true, path, action: "deleted" };
+      return {
+        success: true,
+        path,
+        action: "deleted",
+        staged: true,
+        note: "File removed from MCP session copy. Pass updated project files to the builder for authoritative commit.",
+      };
     }
 
     case "audit_code": {
-      const proj = args.projectId ? memoryProjects.get(args.projectId) : memoryProjects.values().next().value;
-      if (!proj) throw new Error("No active project found.");
+      const proj = resolveProjectExplicit(args.projectId);
       const report = runCodeScan(proj.files);
       return { auditReport: report };
     }

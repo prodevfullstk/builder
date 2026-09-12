@@ -1,21 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
-import { handleMcpRequest } from "@/lib/mcp/server";
+import { handleMcpRequest, McpRequestContext } from "@/lib/mcp/server";
 import { JsonRpcRequest } from "@/lib/mcp/types";
+import { authenticateRequest } from "@/lib/auth/server-auth";
 
 export const dynamic = "force-dynamic";
 
-// Standard CORS headers for MCP client connections
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-MCP-Version",
-};
+function getCorsHeaders(req: NextRequest) {
+  const origin = req.headers.get("origin") || "";
+  const host = req.headers.get("host") || "";
+  const isAllowedLocal = origin.includes("localhost") || origin.includes("127.0.0.1") || origin === "";
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: corsHeaders });
+  return {
+    "Access-Control-Allow-Origin": isAllowedLocal && origin ? origin : "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-MCP-Version, X-Auth-Mode",
+  };
+}
+
+export async function OPTIONS(req: NextRequest) {
+  return new NextResponse(null, { status: 204, headers: getCorsHeaders(req) });
 }
 
 export async function POST(req: NextRequest) {
+  const corsHeaders = getCorsHeaders(req);
+
   try {
     const body: JsonRpcRequest = await req.json();
 
@@ -33,7 +41,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const response = await handleMcpRequest(body);
+    // Try extracting optional authenticated context for user-owned operations
+    let context: McpRequestContext | undefined = undefined;
+    const authHeader = req.headers.get("authorization");
+    if (authHeader) {
+      const authResult = await authenticateRequest(req, { allowDemo: true });
+      if (authResult.user) {
+        context = {
+          userId: authResult.user.id,
+          authMode: authResult.user.authMode,
+        };
+      }
+    }
+
+    const response = await handleMcpRequest(body, context);
     return NextResponse.json(response, {
       status: response.error ? (response.error.data?.status || 200) : 200,
       headers: corsHeaders,
@@ -57,6 +78,7 @@ export async function GET(req: NextRequest) {
   const host = req.headers.get("host") || "localhost:3000";
   const protocol = host.includes("localhost") ? "http" : "https";
   const mcpEndpoint = `${protocol}://${host}/api/mcp`;
+  const corsHeaders = getCorsHeaders(req);
 
   return NextResponse.json(
     {

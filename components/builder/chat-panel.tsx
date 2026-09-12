@@ -37,6 +37,7 @@ import { SUGGESTED_PROMPTS } from '@/lib/ai/prompt-templates';
 import { V0Stepper } from './v0-stepper';
 import { BoltPlanCard } from './bolt-plan-card';
 import { useCreditsStore, CreditAction } from '@/lib/store/credits-store';
+import { evaluateCandidateChanges } from '@/lib/validation/candidate-pipeline';
 
 interface ChatPanelProps {
   onGenerateStart?: () => void;
@@ -68,6 +69,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     activeSteps,
     setActiveSteps,
     runtimeError,
+    setRuntimeError,
     clearRuntimeError,
     resetAutoFixAttempts,
   } = useProjectStore();
@@ -288,19 +290,30 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         }
 
         if (Object.keys(recoveredFiles).length > 0) {
-          addLog(`[Failsafe] Detected ${Object.keys(recoveredFiles).length} files in chat response — moving to editor & preview.`);
-          const merged = { ...files, ...recoveredFiles };
-          setFiles(merged);
+          addLog(`[Candidate Pipeline] Validating ${Object.keys(recoveredFiles).length} candidate files from chat response...`);
+          const evalResult = await evaluateCandidateChanges({
+            projectId: 'chat-candidate',
+            framework: effectiveFramework,
+            currentFiles: files,
+            candidateFiles: recoveredFiles,
+            isNewBuild: false,
+          });
 
-          const entry = effectiveFramework === 'vite'
-            ? (merged['src/App.tsx'] ? 'src/App.tsx' : merged['src/App.jsx'] ? 'src/App.jsx' : Object.keys(merged)[0])
-            : (merged['app/page.tsx'] ? 'app/page.tsx' : merged['src/App.tsx'] ? 'src/App.tsx' : Object.keys(merged)[0]);
-          if (entry) setActiveFile(entry);
+          if (evalResult.accepted) {
+            setFiles(evalResult.committedFiles);
+            const entry = effectiveFramework === 'vite'
+              ? (evalResult.committedFiles['src/App.tsx'] ? 'src/App.tsx' : evalResult.committedFiles['src/App.jsx'] ? 'src/App.jsx' : Object.keys(evalResult.committedFiles)[0])
+              : (evalResult.committedFiles['app/page.tsx'] ? 'app/page.tsx' : evalResult.committedFiles['src/App.tsx'] ? 'src/App.tsx' : Object.keys(evalResult.committedFiles)[0]);
+            if (entry) setActiveFile(entry);
 
-          // Clean chat message so raw code doesn't clutter the chat bubble
-          const cleanChatMsg = chatToolExpl || chatAiExpl || 'I have generated and updated the project files in your workspace!';
-          updateStreamingMessage(cleanChatMsg.trim());
-          setStatus('ready', 'Application ready');
+            const cleanChatMsg = chatToolExpl || chatAiExpl || 'I have generated and validated the project files in your workspace!';
+            updateStreamingMessage(cleanChatMsg.trim());
+            setStatus('ready', 'Application ready');
+            addLog(`[Candidate Pipeline] ✓ Accepted and committed (${evalResult.evidence.checks.length} checks passed).`);
+          } else {
+            addLog(`[Candidate Pipeline] ✕ Validation rejected candidate: ${evalResult.diagnostics.join(' | ')}`);
+            setStatus('idle');
+          }
         } else {
           setStatus('idle');
         }
@@ -398,46 +411,42 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
           setActiveSteps(currentSteps);
         }
 
-        // Streaming file detection — update steps as files are written
-        const { files: parsedFiles, currentStreamingFile } = extractStreamingState(accumulatedText);
+        // Streaming file detection — track live files without mutating authoritative store
+        const { currentStreamingFile } = extractStreamingState(accumulatedText);
 
-        if (Object.keys(parsedFiles).length > 0) {
-          setFiles(isNewBuild ? parsedFiles : { ...files, ...parsedFiles });
+        if (currentStreamingFile) {
+          setStreamingFile(currentStreamingFile);
+          setActiveFile(currentStreamingFile);
 
-          if (currentStreamingFile) {
-            setStreamingFile(currentStreamingFile);
-            setActiveFile(currentStreamingFile);
-
-            if (!trackedFiles.has(currentStreamingFile)) {
-              trackedFiles.add(currentStreamingFile);
-              // Mark previous file steps as completed
-              currentSteps = currentSteps.map((s) =>
-                s.type === 'file' && s.status === 'running'
-                  ? { ...s, status: 'completed' as const }
-                  : s
-              );
-              const fileStep: TimelineStep = {
-                id: `step-${currentStreamingFile}`,
-                type: 'file',
-                label: `Creating ${currentStreamingFile.split('/').pop()}`,
-                file: currentStreamingFile,
-                status: 'running',
-              };
-              currentSteps = [...currentSteps, fileStep];
-              setActiveSteps(currentSteps);
-            }
+          if (!trackedFiles.has(currentStreamingFile)) {
+            trackedFiles.add(currentStreamingFile);
+            // Mark previous file steps as completed
+            currentSteps = currentSteps.map((s) =>
+              s.type === 'file' && s.status === 'running'
+                ? { ...s, status: 'completed' as const }
+                : s
+            );
+            const fileStep: TimelineStep = {
+              id: `step-${currentStreamingFile}`,
+              type: 'file',
+              label: `Creating ${currentStreamingFile.split('/').pop()}`,
+              file: currentStreamingFile,
+              status: 'running',
+            };
+            currentSteps = [...currentSteps, fileStep];
+            setActiveSteps(currentSteps);
           }
         }
       }
 
       // ── MCP Tool Execution Layer ──
       const { toolCalls, explanation: mcpExplanation } = parseToolCalls(accumulatedText);
-      let mcpFiles = { ...(isNewBuild ? {} : files) };
+      let mcpFiles: Record<string, string> = {};
       const hasToolCalls = toolCalls.length > 0;
       let toolSteps: TimelineStep[] = [];
 
       if (hasToolCalls) {
-        const mcpResult = executeToolCalls(mcpFiles, toolCalls);
+        const mcpResult = executeToolCalls(files, toolCalls);
         mcpFiles = mcpResult.updatedFiles;
         mcpResult.logs.forEach((l) => addLog(l));
 
@@ -453,26 +462,72 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       // ── Standard Parser (FILES block or markdown fences) ──
       const { files: parsedFiles, aiExplanation, parseError } = parseFinalOutput(accumulatedText);
 
-      // Merge: MCP tool modifications take precedence, supplemented by parsed files
-      const mergedFiles = hasToolCalls
+      // Raw Candidate Workspace
+      const candidateFiles = hasToolCalls
         ? { ...parsedFiles, ...mcpFiles }
-        : Object.keys(parsedFiles).length > 0
-        ? (isNewBuild ? parsedFiles : { ...files, ...parsedFiles })
-        : files;
+        : parsedFiles;
 
-      if (Object.keys(mergedFiles).length > 0) {
-        setFiles(mergedFiles);
-        // Auto-select entry file based on framework
-        const entryFile = effectiveFramework === 'vite'
-          ? (mergedFiles['src/App.tsx'] ? 'src/App.tsx' : mergedFiles['src/App.jsx'] ? 'src/App.jsx' : Object.keys(mergedFiles)[0])
-          : effectiveFramework === 'astro'
-          ? (mergedFiles['src/pages/index.astro'] ? 'src/pages/index.astro' : Object.keys(mergedFiles)[0])
-          : (mergedFiles['app/page.tsx'] ? 'app/page.tsx' : mergedFiles['src/App.tsx'] ? 'src/App.tsx' : Object.keys(mergedFiles)[0]);
-        if (entryFile) setActiveFile(entryFile);
-        addLog(`[AI] Workspace updated: ${Object.keys(mergedFiles).length} files (${hasToolCalls ? `${toolCalls.length} MCP tools executed` : 'file parser'}).`);
+      // ── ATOMIC CANDIDATE VALIDATION GATE ──
+      addLog(`[Candidate Pipeline] Evaluating candidate changes against ${effectiveFramework.toUpperCase()} contract...`);
+      const valStepId = 'val-' + Date.now();
+      const validationStep: TimelineStep = {
+        id: valStepId,
+        type: 'inspect',
+        label: `Validating candidate for ${effectiveFramework.toUpperCase()}...`,
+        status: 'running',
+      };
+      currentSteps = [...currentSteps, validationStep];
+      setActiveSteps(currentSteps);
+
+      const evalResult = await evaluateCandidateChanges({
+        projectId: 'workspace',
+        framework: effectiveFramework,
+        currentFiles: files,
+        candidateFiles,
+        isNewBuild,
+      });
+
+      if (!evalResult.accepted) {
+        // Validation Failed: Preserve previous known-good project untouched!
+        addLog(`[Candidate Pipeline] ✕ REJECTED: ${evalResult.diagnostics.join(' | ')}`);
+        currentSteps = currentSteps.map((s) =>
+          s.id === valStepId
+            ? { ...s, status: 'completed' as const, label: `Validation Failed (${evalResult.diagnostics[0] || 'Contract error'})` }
+            : s
+        );
+        setActiveSteps(currentSteps);
+        setIsStreaming(false);
+        setStreamingFile(null);
+        setStatus('error', 'Validation rejected candidate changes');
+        setRuntimeError(`Validation Error: ${evalResult.diagnostics[0] || 'Generated files violated framework contract'}`);
+
+        addMessage({
+          role: 'assistant',
+          content: `⚠️ **Candidate Validation Failed:** The generated changes did not satisfy the **${effectiveFramework.toUpperCase()}** framework contract or security requirements.\n\n**Diagnostics:**\n${evalResult.diagnostics.map((d) => `- ${d}`).join('\n')}\n\n*Your previous working files have been preserved.* Click **Auto-Fix with AI** or provide instructions to repair the candidate.`,
+          steps: currentSteps,
+          showPreview: false,
+        });
+        return;
       }
 
-      let verifiedFiles = mergedFiles;
+      // Validation Passed: Update authoritative project store
+      let verifiedFiles = evalResult.committedFiles;
+      setFiles(verifiedFiles);
+      const entryFile = effectiveFramework === 'vite'
+        ? (verifiedFiles['src/App.tsx'] ? 'src/App.tsx' : verifiedFiles['src/App.jsx'] ? 'src/App.jsx' : Object.keys(verifiedFiles)[0])
+        : effectiveFramework === 'astro'
+        ? (verifiedFiles['src/pages/index.astro'] ? 'src/pages/index.astro' : Object.keys(verifiedFiles)[0])
+        : (verifiedFiles['app/page.tsx'] ? 'app/page.tsx' : verifiedFiles['src/App.tsx'] ? 'src/App.tsx' : Object.keys(verifiedFiles)[0]);
+      if (entryFile) setActiveFile(entryFile);
+
+      addLog(`[Candidate Pipeline] ✓ ACCEPTED candidate (${evalResult.evidence.checks.length} checks passed).`);
+      currentSteps = currentSteps.map((s) =>
+        s.id === valStepId
+          ? { ...s, status: 'completed' as const, label: `Validated candidate (${evalResult.evidence.checks.length} checks passed)` }
+          : s
+      );
+      setActiveSteps(currentSteps);
+
       let buildHealed = false;
 
       // ── Autonomous Build-Verify-Repair Pipeline ──
@@ -529,10 +584,24 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
               }
 
               if (Object.keys(healedDiff).length > 0) {
-                verifiedFiles = { ...verifiedFiles, ...healedDiff };
-                setFiles(verifiedFiles);
-                buildHealed = true;
-                addLog(`[Auto-Heal] Successfully resolved build errors in ${Object.keys(healedDiff).join(', ')}.`);
+                // SECURITY: Auto-healed candidates must also pass the validation pipeline —
+                // a malicious or buggy fix response must not bypass the security boundary.
+                const healCandidateFiles = { ...verifiedFiles, ...healedDiff };
+                const healEval = await evaluateCandidateChanges({
+                  projectId: 'workspace',
+                  framework: effectiveFramework,
+                  currentFiles: verifiedFiles,
+                  candidateFiles: healCandidateFiles,
+                  isNewBuild: false,
+                });
+                if (healEval.accepted) {
+                  verifiedFiles = healEval.committedFiles;
+                  setFiles(verifiedFiles);
+                  buildHealed = true;
+                  addLog(`[Auto-Heal] ✓ Validated & resolved build errors in ${Object.keys(healedDiff).join(', ')}.`);
+                } else {
+                  addLog(`[Auto-Heal] ✕ Heal candidate failed validation: ${healEval.diagnostics.join(' | ')} — preserving last known-good state.`);
+                }
               }
             }
           } else {
@@ -566,7 +635,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       setStreamingFile(null);
 
       // Clean up response explanation: strip internal prompt rules or thoughts
-      const fileList = Object.keys(mergedFiles);
+      const fileList = Object.keys(verifiedFiles);
       const chosenExplanation = mcpExplanation || aiExplanation;
       let cleanIntro = '';
       if (chosenExplanation && chosenExplanation.length > 10) {

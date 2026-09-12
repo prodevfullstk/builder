@@ -19,6 +19,19 @@ export interface ExecutionResult {
 
 export type Framework = 'nextjs' | 'astro' | 'vite' | 'node';
 
+export interface DependencyMutationRecord {
+  dependency: string;
+  sourceVersion: string;
+  runtimeVersion: string;
+  reason: string;
+}
+
+export interface DependencyNormalizationReport {
+  wasNormalized: boolean;
+  mutations: DependencyMutationRecord[];
+  effectiveEnvironment: 'declared' | 'runtime_normalized';
+}
+
 function getBridgeIframe(): HTMLIFrameElement {
   let bridgeIframe = document.getElementById('nodebox-runtime-bridge') as HTMLIFrameElement;
   if (!bridgeIframe) {
@@ -77,24 +90,38 @@ export class NodeboxAdapter {
     }
   }
 
+  private lastNormalizationReport: DependencyNormalizationReport = {
+    wasNormalized: false,
+    mutations: [],
+    effectiveEnvironment: 'declared',
+  };
+
+  getNormalizationReport(): DependencyNormalizationReport {
+    return this.lastNormalizationReport;
+  }
+
   /**
-   * Mount all project files into virtual filesystem in one fast batch
+   * Mount all project files into virtual filesystem in one fast batch.
+   * Does NOT mutate the source project files. If sandbox runtime normalization is required,
+   * it is explicitly recorded in a normalization report and logged.
    */
   async mountFiles(files: FileSystem): Promise<void> {
     if (!this.nodebox) throw new Error('Nodebox not initialized');
 
     this.log(`📁 Mounting ${Object.keys(files).length} files to virtual filesystem...`);
 
-    const normalized: Record<string, string> = {};
+    const runtimeFiles: Record<string, string> = {};
     for (const [path, content] of Object.entries(files)) {
       const cleanPath = path.replace(/^\/+/, '');
-      normalized[cleanPath] = content;
+      runtimeFiles[cleanPath] = content;
     }
 
-    // Sanitize package.json to prevent CodeSandbox Sandpack CDN 500 errors
-    if (normalized['package.json']) {
+    const mutations: DependencyMutationRecord[] = [];
+
+    // Explicit dependency normalization for browser WASM compatibility
+    if (runtimeFiles['package.json']) {
       try {
-        const pkg = JSON.parse(normalized['package.json']);
+        const pkg = JSON.parse(runtimeFiles['package.json']);
         if (!pkg.dependencies) pkg.dependencies = {};
 
         const STABLE_MAP: Record<string, string> = {
@@ -110,17 +137,41 @@ export class NodeboxAdapter {
         for (const [dep, ver] of Object.entries(pkg.dependencies)) {
           const verStr = String(ver);
           if (verStr.includes('canary') || verStr.includes('beta') || verStr === 'latest' || verStr === '*') {
-            pkg.dependencies[dep] = STABLE_MAP[dep] || '^1.0.0';
-          } else if (dep === 'lucide-react') {
+            const replacement = STABLE_MAP[dep] || '^1.0.0';
+            mutations.push({
+              dependency: dep,
+              sourceVersion: verStr,
+              runtimeVersion: replacement,
+              reason: 'Replaced unstable/floating version for in-browser sandbox resolution',
+            });
+            pkg.dependencies[dep] = replacement;
+          } else if (dep === 'lucide-react' && verStr !== '^0.344.0') {
+            mutations.push({
+              dependency: dep,
+              sourceVersion: verStr,
+              runtimeVersion: '^0.344.0',
+              reason: 'Pinned for in-browser Nodebox Sandpack bundler compatibility',
+            });
             pkg.dependencies[dep] = '^0.344.0';
           }
         }
-        normalized['package.json'] = JSON.stringify(pkg, null, 2);
-      } catch {}
+
+        if (mutations.length > 0) {
+          runtimeFiles['package.json'] = JSON.stringify(pkg, null, 2);
+          this.log(`⚠️ [Runtime Normalization] ${mutations.length} package dependency pin(s) adjusted for in-browser sandbox (source project remains unmodified).`);
+        }
+      } catch (err) {
+        this.log('[Runtime Normalization] Warning: Failed to parse package.json for runtime validation.');
+      }
     } else {
-      // Fallback default package.json if AI omitted it
-      const hasVite = Object.keys(normalized).some((p) => p.startsWith('src/'));
-      normalized['package.json'] = JSON.stringify({
+      // Declared package.json missing from source project
+      mutations.push({
+        dependency: 'all',
+        sourceVersion: 'none',
+        runtimeVersion: 'default_runtime_manifest',
+        reason: 'Source project missing declared package.json; provided runtime execution manifest',
+      });
+      runtimeFiles['package.json'] = JSON.stringify({
         name: 'opendork-project',
         private: true,
         version: '0.0.0',
@@ -130,13 +181,20 @@ export class NodeboxAdapter {
           'lucide-react': '^0.344.0',
           'clsx': '^2.1.0',
           'tailwind-merge': '^2.2.1',
-          '@supabase/supabase-js': '^2.39.8'
-        }
+          '@supabase/supabase-js': '^2.39.8',
+        },
       }, null, 2);
+      this.log('⚠️ [Runtime Normalization] Generated default runtime package.json because source project lacked a package manifest.');
     }
 
+    this.lastNormalizationReport = {
+      wasNormalized: mutations.length > 0,
+      mutations,
+      effectiveEnvironment: mutations.length > 0 ? 'runtime_normalized' : 'declared',
+    };
+
     try {
-      await this.nodebox.fs.init(normalized);
+      await this.nodebox.fs.init(runtimeFiles);
       this.log('✅ Files mounted successfully');
     } catch (error: any) {
       this.log(`❌ File mounting failed: ${error?.message || error}`);

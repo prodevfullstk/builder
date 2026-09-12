@@ -1,0 +1,1 @@
+export default function Page() { return <h1>Next.js Fixture</h1>; }

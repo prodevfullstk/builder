@@ -20,6 +20,7 @@ import {
 import { parseFinalOutput } from "@/lib/ai/code-parser";
 import { parseToolCalls, executeToolCalls } from "@/lib/ai/mcp-executor";
 import { useCreditsStore } from "@/lib/store/credits-store";
+import { evaluateCandidateChanges } from "@/lib/validation/candidate-pipeline";
 
 function BuilderWorkspace() {
   const {
@@ -188,22 +189,44 @@ function BuilderWorkspace() {
 
           // Fallback to standard parser
           const { files: parsedFiles, aiExplanation } = parseFinalOutput(accumulated);
-          const finalFiles = { ...parsedFiles, ...genFiles };
+          const candidateFiles = { ...parsedFiles, ...genFiles };
 
-          if (Object.keys(finalFiles).length > 0) {
-            setFiles(finalFiles);
-            const entry =
-              finalFiles["app/page.tsx"]
-                ? "app/page.tsx"
-                : finalFiles["src/App.tsx"]
-                ? "src/App.tsx"
-                : Object.keys(finalFiles)[0];
-            if (entry) setActiveFile(entry);
+          // Validate candidate against framework contract
+          addLog(`[Candidate Pipeline] Validating initial ${targetFramework.toUpperCase()} build...`);
+          const evalResult = await evaluateCandidateChanges({
+            projectId: newProj.id,
+            framework: targetFramework,
+            currentFiles: {},
+            candidateFiles,
+            isNewBuild: true,
+          });
+
+          if (!evalResult.accepted) {
+            addLog(`[Candidate Pipeline] ✕ Initial generation rejected: ${evalResult.diagnostics.join(' | ')}`);
+            setIsStreaming(false);
+            setStreamingFile(null);
+            setStatus("error", "Initial candidate failed framework validation");
+            addMessage({
+              role: "assistant",
+              content: `⚠️ Generation failed framework contract validation: ${evalResult.diagnostics.join('; ')}`,
+            });
+            return;
           }
+
+          const finalFiles = evalResult.committedFiles;
+          setFiles(finalFiles);
+          addLog(`[Candidate Pipeline] ✓ Initial build accepted (${evalResult.evidence.checks.length} checks passed).`);
+          const entry =
+            finalFiles["app/page.tsx"]
+              ? "app/page.tsx"
+              : finalFiles["src/App.tsx"]
+              ? "src/App.tsx"
+              : Object.keys(finalFiles)[0];
+          if (entry) setActiveFile(entry);
 
           const steps = [
             { id: "init-analyze", type: "thought" as const, label: "Analyzed requirements", status: "completed" as const },
-            { id: "init-build", type: "file" as const, label: `Built ${Object.keys(finalFiles).length} project files`, status: "completed" as const },
+            { id: "init-build", type: "file" as const, label: `Built and validated ${Object.keys(finalFiles).length} project files`, status: "completed" as const },
             { id: "init-preview", type: "preview" as const, label: "Preview ready", status: "completed" as const },
           ];
 

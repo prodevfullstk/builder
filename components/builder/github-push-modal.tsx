@@ -66,7 +66,7 @@ export function GitHubPushModal({
   const [pushError, setPushError] = useState<string | null>(null);
   const [pushResult, setPushResult] = useState<{ commitUrl?: string; repoUrl?: string } | null>(null);
 
-  // Initialize from localStorage and default repo name
+  // Initialize clean state and purge any legacy localStorage token
   useEffect(() => {
     if (isOpen) {
       const sanitized = projectName
@@ -76,11 +76,12 @@ export function GitHubPushModal({
         .replace(/^-|-$/g, '');
       setRepoName(sanitized || 'my-ai-web-app');
 
-      const savedToken = localStorage.getItem('opendrok_github_token');
-      if (savedToken && !user) {
-        setToken(savedToken);
-        handleVerifyToken(savedToken);
-      }
+      // Security: Purge any legacy GitHub token from localStorage to prevent token retention
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.removeItem('opendrok_github_token');
+        }
+      } catch {}
 
       // Initial run of code scanner
       handleRunScan();
@@ -104,7 +105,7 @@ export function GitHubPushModal({
 
     if (res.success && res.user) {
       setUser(res.user);
-      localStorage.setItem('opendrok_github_token', t.trim());
+      // Security: Keep token strictly in memory React state, never write to localStorage
       setAuthError(null);
     } else {
       setUser(null);
@@ -113,7 +114,11 @@ export function GitHubPushModal({
   };
 
   const handleDisconnect = () => {
-    localStorage.removeItem('opendrok_github_token');
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.removeItem('opendrok_github_token');
+      }
+    } catch {}
     setUser(null);
     setToken('');
   };
@@ -310,7 +315,7 @@ export function GitHubPushModal({
                   )}
 
                   <p className="text-[11px] text-zinc-500 leading-relaxed">
-                    Token is securely stored locally in your browser to authorize repository creation and commits via GitHub REST API.
+                    Token is kept securely in-memory for this session only and is never stored in persistent browser storage or transmitted to intermediate servers.
                   </p>
                 </div>
               ) : (

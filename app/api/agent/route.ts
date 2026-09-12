@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { createGeminiStream } from "@/lib/ai/gemini-stream";
 import { getSystemPrompt } from "@/lib/ai/prompt-templates";
+import { authenticateRequest } from "@/lib/auth/server-auth";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -24,6 +25,16 @@ export async function POST(req: NextRequest) {
     if (!message || typeof message !== "string") {
       return new Response(JSON.stringify({ error: "Message is required" }), {
         status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Authentication gate: requires real Supabase token or explicit demo mode.
+    // Blocks anonymous LLM abuse from unauthenticated IPs.
+    const authResult = await authenticateRequest(req, { allowDemo: true });
+    if (authResult.error) {
+      return new Response(JSON.stringify({ error: authResult.error }), {
+        status: authResult.status,
         headers: { "Content-Type": "application/json" },
       });
     }
