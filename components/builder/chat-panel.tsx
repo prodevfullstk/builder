@@ -35,6 +35,7 @@ import { parseToolCalls, executeToolCalls } from '@/lib/ai/mcp-executor';
 import { bundleProjectWithEsbuild } from '@/lib/preview/esbuild-compiler';
 import { SUGGESTED_PROMPTS } from '@/lib/ai/prompt-templates';
 import { V0Stepper } from './v0-stepper';
+import { BoltPlanCard } from './bolt-plan-card';
 import { useCreditsStore, CreditAction } from '@/lib/store/credits-store';
 
 interface ChatPanelProps {
@@ -546,19 +547,29 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       setIsStreaming(false);
       setStreamingFile(null);
 
-      // Use AI explanation if available, else generate a brief summary
+      // Clean up response explanation: strip internal prompt rules or thoughts
       const fileList = Object.keys(mergedFiles);
       const chosenExplanation = mcpExplanation || aiExplanation;
-      const responseContent = chosenExplanation && chosenExplanation.length > 20
-        ? chosenExplanation
-        : `Updated ${effectiveFramework.toUpperCase()} project with ${fileList.length} files: ${fileList.slice(0, 4).map(f => f.split('/').pop()).join(', ')}${fileList.length > 4 ? '...' : ''}.`;
+      let cleanIntro = '';
+      if (chosenExplanation && chosenExplanation.length > 10) {
+        // Strip out any leaked rules / diagnostic prompts if AI included them
+        const sanitized = chosenExplanation
+          .replace(/Assessment of initial workspace state[\s\S]*?Let's check the rules:[\s\S]*?(?=\n\n|$)/gi, '')
+          .replace(/Prior to writing code[\s\S]*?(?=\n\n|$)/gi, '')
+          .replace(/### (?:TYPES-FIRST|ARCHITECTURE-FIRST|CRITICAL GENERATION RULES)[\s\S]*?(?=\n\n|$)/gi, '')
+          .trim();
+        cleanIntro = sanitized.split('\n\n')[0]?.trim() || '';
+      }
+      if (!cleanIntro || cleanIntro.length < 10) {
+        cleanIntro = `I'll build a complete ${effectiveFramework.toUpperCase()} application with ${fileList.length} files. Let's inspect the setup and verify the components.`;
+      }
 
       addMessage({
         role: 'assistant',
-        content: responseContent,
+        content: cleanIntro,
         steps: finalSteps,
         filesGenerated: fileList,
-        showPreview: true,
+        showPreview: false,
       });
 
       if (isFixRequest) {
@@ -629,35 +640,20 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
             ) : (
               <div className="w-full">
                 {msg.steps && msg.steps.length > 0 ? (
-                  <>
-                    <V0Stepper
-                      steps={msg.steps}
-                      filesGenerated={msg.filesGenerated}
-                      showPreview={msg.showPreview}
-                      content={msg.content}
-                    />
-                    {msg.screenshot && (
-                      <div className="mt-2 rounded-xl overflow-hidden border border-zinc-800 shadow-lg">
-                        <div className="px-2.5 py-1.5 bg-zinc-900 border-b border-zinc-800 flex items-center gap-1.5 text-[10px] text-zinc-400">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-                          <span>Preview snapshot</span>
-                        </div>
-                        <img
-                          src={msg.screenshot}
-                          alt="Preview snapshot"
-                          className="w-full block"
-                        />
-                      </div>
-                    )}
-                  </>
+                  <BoltPlanCard
+                    introText={msg.content}
+                    steps={msg.steps}
+                    filesInspected={msg.filesGenerated}
+                    isStreaming={false}
+                  />
                 ) : (
-                  <div className="w-full rounded-xl px-3.5 py-2.5 leading-relaxed bg-zinc-900/90 border border-zinc-800/80 text-zinc-300">
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
-                    {msg.screenshot && (
-                      <div className="mt-2 rounded-xl overflow-hidden border border-zinc-800">
-                        <img src={msg.screenshot} alt="Preview snapshot" className="w-full block" />
-                      </div>
-                    )}
+                  <div className="w-full space-y-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-extrabold italic text-sm tracking-tight text-zinc-100">opendork</span>
+                    </div>
+                    <div className="w-full rounded-xl px-3.5 py-2.5 leading-relaxed bg-zinc-900/90 border border-zinc-800/80 text-zinc-300">
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                    </div>
                   </div>
                 )}
               </div>
@@ -668,7 +664,11 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         {/* Live Stepper when AI is actively generating */}
         {status === 'generating' && (
           <div className="w-full text-xs">
-            <V0Stepper steps={activeSteps} isStreaming={true} showPreview={false} />
+            <BoltPlanCard
+              introText={`Building your ${framework.toUpperCase()} application with live components...`}
+              steps={activeSteps}
+              isStreaming={true}
+            />
           </div>
         )}
 
