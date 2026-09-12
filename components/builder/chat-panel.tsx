@@ -57,6 +57,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     authProvider,
     setAuthProvider,
     addLog,
+    activeFile,
     setActiveFile,
     streamingFile,
     setStreamingFile,
@@ -344,6 +345,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
             .filter((m) => m.content && m.content.trim() !== '' && m.content !== '…')
             .map((m) => ({ role: m.role, content: m.content })),
           files: isNewBuild && !isFixRequest ? {} : files,
+          activeFile: activeFile || undefined,
           framework: effectiveFramework,
           dbProvider: effectiveDbProvider,
           authProvider: effectiveAuthProvider,
