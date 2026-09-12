@@ -255,13 +255,6 @@ export default function PricingPage() {
                 <span className="text-zinc-500 text-[10px]">Credits</span>
               </div>
               <UserMenu />
-              <Link
-                href="/builder"
-                className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md shadow-blue-900/30 transition-all hover:scale-105"
-              >
-                <span>Launch Builder</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
             </div>
           </div>
         </div>
