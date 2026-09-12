@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Model Context Protocol (MCP) Tool Definitions
  * Defines standard tools that the AI builder agent can call to inspect and modify the project.
  */
@@ -80,6 +80,15 @@ export const MCP_TOOLS: MCPToolDefinition[] = [
       required: [],
     },
   },
+  {
+    name: "audit_code",
+    description: "Audit project files for security risks, leaked secrets, and framework integrity.",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 /**
@@ -88,7 +97,7 @@ export const MCP_TOOLS: MCPToolDefinition[] = [
 export function getMCPToolsPrompt(): string {
   return `
 ### 🛠️ MCP (MODEL CONTEXT PROTOCOL) TOOLS AVAILABLE:
-You can invoke the following tools to manipulate the project workspace:
+You can invoke the following tools to inspect and manipulate the project workspace:
 
 1. \`write_file(path, content)\`
    - Use to create new files or rewrite full components.
@@ -97,6 +106,10 @@ You can invoke the following tools to manipulate the project workspace:
    - \`targetContent\` must match exact existing characters/lines in the file.
 3. \`delete_file(path)\`
    - Use to remove obsolete files.
+4. \`list_files()\`
+   - Returns the list of all files currently in the workspace.
+5. \`audit_code()\`
+   - Runs a security, secrets leak, and structure health check on the project.
 
 ### 📐 TOOL CALL SYNTAX:
 To invoke a tool, wrap a valid JSON object in a \`<TOOL_CALL>\` block:
@@ -106,11 +119,11 @@ To invoke a tool, wrap a valid JSON object in a \`<TOOL_CALL>\` block:
 </TOOL_CALL>
 
 <TOOL_CALL>
-{"name": "edit_file", "args": {"path": "app/page.tsx", "targetContent": "<h1 className=\"text-3xl\">Old</h1>", "replacementContent": "<h1 className=\"text-5xl font-bold\">New</h1>"}}
+{"name": "edit_file", "args": {"path": "app/page.tsx", "targetContent": "<h1 className=\\"text-3xl\\">Old</h1>", "replacementContent": "<h1 className=\\"text-5xl font-bold\\">New</h1>"}}
 </TOOL_CALL>
 
 <TOOL_CALL>
-{"name": "delete_file", "args": {"path": "components/OldBanner.tsx"}}
+{"name": "audit_code", "args": {}}
 </TOOL_CALL>
 
 You may call multiple tools in sequence. After calling all needed tools, write a friendly explanation of what you changed.`;

@@ -1,7 +1,9 @@
-﻿/**
+/**
  * MCP (Model Context Protocol) Tool Call Parser & Executor
  * Parses <TOOL_CALL> blocks from the AI stream and executes file operations on the workspace.
  */
+
+import { runCodeScan } from "@/lib/export/code-scanner";
 
 export interface ToolCall {
   id: string;
@@ -152,6 +154,15 @@ export function executeToolCalls(
         });
         logs.push(`[MCP] delete_file: removed ${rawPath}`);
       }
+    } else if (name === "audit_code") {
+      const report = runCodeScan(updatedFiles);
+      executedTools.push({
+        tool: "audit_code",
+        path: "workspace",
+        action: "created",
+        details: `Security score: ${report.score}/100 with ${report.issues.length} findings`,
+      });
+      logs.push(`[MCP] audit_code completed: safety score ${report.score}/100, ${report.issues.length} issues`);
     }
   }
 
