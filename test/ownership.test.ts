@@ -20,12 +20,13 @@ describe('Project Authority & Strict Ownership Model', () => {
     name: 'Bob',
   };
 
-  const projectA = {
+  const projectA: any = {
     id: 'proj_alice_alpha',
     name: 'Alice Alpha Project',
     framework: 'nextjs',
     owner_id: alice.id,
     files: { 'package.json': '{}' },
+    messages: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -76,9 +77,10 @@ describe('Project Authority & Strict Ownership Model', () => {
     registerServerProject({
       id: 'proj_bob_beta',
       name: 'Bob Beta Project',
-      framework: 'vite-react',
+      framework: 'vite',
       owner_id: bob.id,
       files: { 'package.json': '{}' },
+      messages: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });

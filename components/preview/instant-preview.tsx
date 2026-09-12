@@ -11,6 +11,7 @@ interface InstantPreviewProps {
   backendUrl?: string | null;
   onError?: (err: string) => void;
   onScreenshot?: (dataUrl: string) => void;
+  onEngineStatusChange?: (status: 'simulated-dom' | 'virtual-compiled') => void;
 }
 
 export function InstantPreview({
@@ -20,6 +21,7 @@ export function InstantPreview({
   backendUrl = null,
   onError,
   onScreenshot,
+  onEngineStatusChange,
 }: InstantPreviewProps) {
   // Listen to preview iframe runtime/compilation errors + screenshots
   useEffect(() => {
@@ -52,18 +54,26 @@ export function InstantPreview({
         const result = await bundleProjectWithEsbuild(files, backendUrl || undefined);
         if (!cancelled && result.errors.length === 0 && result.html) {
           setEsbuildHtml(result.html);
+          onEngineStatusChange?.('virtual-compiled');
+        } else if (!cancelled && result.errors.length > 0) {
+          onEngineStatusChange?.('simulated-dom');
+          onError?.(`Virtual build error: ${result.errors[0]}`);
         }
-      } catch {
-        // esbuild failed - Babel fallback already showing, no action needed
+      } catch (err: any) {
+        if (!cancelled) {
+          onEngineStatusChange?.('simulated-dom');
+          onError?.(`Virtual build error: ${err?.message || 'compilation error'}`);
+        }
       }
     }
 
     // Reset esbuild html when files change
     setEsbuildHtml('');
+    onEngineStatusChange?.('simulated-dom');
     tryEsbuild();
 
     return () => { cancelled = true; };
-  }, [files, refreshNonce, backendUrl]);
+  }, [files, refreshNonce, backendUrl, onError, onEngineStatusChange]);
 
   // Use esbuild result if available, otherwise use reliable Babel result
   const htmlContent = esbuildHtml || babelHtml;

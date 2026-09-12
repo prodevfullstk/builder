@@ -83,6 +83,25 @@ export function validateFrameworkContract(
           status: 'passed',
           message: `Valid Next.js router directory detected (${hasAppDir ? 'app router' : 'pages router'}).`,
         });
+
+        // For App Router, root layout is strictly mandatory
+        if (hasAppDir) {
+          const hasAppLayout = filePaths.some((p) => /^app\/layout\.(tsx|jsx|js)$/i.test(p));
+          if (!hasAppLayout) {
+            checks.push({
+              name: 'nextjs_app_layout_check',
+              status: 'failed',
+              message: "Next.js App Router requires root 'app/layout.tsx' (or layout.js).",
+            });
+            diagnostics.push("Next.js App Router framework contract violated: missing root 'app/layout.tsx'.");
+          } else {
+            checks.push({
+              name: 'nextjs_app_layout_check',
+              status: 'passed',
+              message: "Root layout present ('app/layout.tsx').",
+            });
+          }
+        }
       } else {
         checks.push({
           name: 'nextjs_structure_check',

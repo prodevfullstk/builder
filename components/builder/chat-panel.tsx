@@ -346,6 +346,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       : query;
 
     // ── BUILD / AUTO-FIX MODE ─────────────────────────────────
+    const baselineFiles = { ...files };
     setStatus('generating', isFixRequest ? 'AI is repairing the issue...' : 'AI is building your project...');
     setIsStreaming(true);
     addLog(`[AI] ${isFixRequest ? 'Repairing' : 'Building'}: "${query.slice(0, 60)}..."`);
@@ -482,7 +483,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       const evalResult = await evaluateCandidateChanges({
         projectId: 'workspace',
         framework: effectiveFramework,
-        currentFiles: files,
+        currentFiles: baselineFiles,
         candidateFiles,
         isNewBuild,
       });
@@ -510,15 +511,8 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         return;
       }
 
-      // Validation Passed: Update authoritative project store
+      // Validation Passed: stage candidate changes in-memory (transactional commit deferred)
       let verifiedFiles = evalResult.committedFiles;
-      setFiles(verifiedFiles);
-      const entryFile = effectiveFramework === 'vite'
-        ? (verifiedFiles['src/App.tsx'] ? 'src/App.tsx' : verifiedFiles['src/App.jsx'] ? 'src/App.jsx' : Object.keys(verifiedFiles)[0])
-        : effectiveFramework === 'astro'
-        ? (verifiedFiles['src/pages/index.astro'] ? 'src/pages/index.astro' : Object.keys(verifiedFiles)[0])
-        : (verifiedFiles['app/page.tsx'] ? 'app/page.tsx' : verifiedFiles['src/App.tsx'] ? 'src/App.tsx' : Object.keys(verifiedFiles)[0]);
-      if (entryFile) setActiveFile(entryFile);
 
       addLog(`[Candidate Pipeline] ✓ ACCEPTED candidate (${evalResult.evidence.checks.length} checks passed).`);
       currentSteps = currentSteps.map((s) =>
@@ -529,6 +523,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       setActiveSteps(currentSteps);
 
       let buildHealed = false;
+      let compilationPassed = true;
 
       // ── Autonomous Build-Verify-Repair Pipeline ──
       if (Object.keys(verifiedFiles).length > 0) {
@@ -584,8 +579,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
               }
 
               if (Object.keys(healedDiff).length > 0) {
-                // SECURITY: Auto-healed candidates must also pass the validation pipeline —
-                // a malicious or buggy fix response must not bypass the security boundary.
+                // SECURITY: Auto-healed candidates must also pass the validation pipeline
                 const healCandidateFiles = { ...verifiedFiles, ...healedDiff };
                 const healEval = await evaluateCandidateChanges({
                   projectId: 'workspace',
@@ -595,22 +589,62 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
                   isNewBuild: false,
                 });
                 if (healEval.accepted) {
-                  verifiedFiles = healEval.committedFiles;
-                  setFiles(verifiedFiles);
-                  buildHealed = true;
-                  addLog(`[Auto-Heal] ✓ Validated & resolved build errors in ${Object.keys(healedDiff).join(', ')}.`);
+                  // Re-verify compilation of healed candidate
+                  const healCheck = await bundleProjectWithEsbuild(healEval.committedFiles);
+                  if (healCheck.errors.length === 0) {
+                    verifiedFiles = healEval.committedFiles;
+                    buildHealed = true;
+                    compilationPassed = true;
+                    addLog(`[Auto-Heal] ✓ Validated & resolved build errors in ${Object.keys(healedDiff).join(', ')}.`);
+                  } else {
+                    addLog(`[Auto-Heal] ✕ Heal candidate still failed compilation: ${healCheck.errors[0].slice(0, 100)}`);
+                    compilationPassed = false;
+                  }
                 } else {
-                  addLog(`[Auto-Heal] ✕ Heal candidate failed validation: ${healEval.diagnostics.join(' | ')} — preserving last known-good state.`);
+                  addLog(`[Auto-Heal] ✕ Heal candidate failed validation: ${healEval.diagnostics.join(' | ')}`);
+                  compilationPassed = false;
                 }
+              } else {
+                compilationPassed = false;
               }
+            } else {
+              compilationPassed = false;
             }
+          } else if (checkResult.errors.length > 0) {
+            compilationPassed = false;
           } else {
             addLog('[Build Pipeline] ✓ Virtual build verification passed cleanly.');
+            compilationPassed = true;
           }
         } catch (compileErr) {
           console.warn('[Build Verification]', compileErr);
         }
       }
+
+      // ── TRANSACTIONAL COMMIT GATE ──
+      // If compilation failed and could not be healed, do NOT commit corrupt files to workspace
+      if (!compilationPassed && !isFixRequest) {
+        setIsStreaming(false);
+        setStreamingFile(null);
+        setStatus('error', 'Virtual build verification failed');
+        setRuntimeError('Build verification failed: Candidate code contained unresolvable compilation errors.');
+        addMessage({
+          role: 'assistant',
+          content: `⚠️ **Build Verification Failed:** The generated code could not be compiled cleanly by the virtual bundler.\n\n*Your previous working files have been preserved.* Click **Auto-Fix with AI** or provide instructions to repair the issue.`,
+          steps: currentSteps,
+          showPreview: false,
+        });
+        return;
+      }
+
+      // Validation AND compilation passed: Atomically commit to authoritative project store
+      setFiles(verifiedFiles);
+      const entryFile = effectiveFramework === 'vite'
+        ? (verifiedFiles['src/App.tsx'] ? 'src/App.tsx' : verifiedFiles['src/App.jsx'] ? 'src/App.jsx' : Object.keys(verifiedFiles)[0])
+        : effectiveFramework === 'astro'
+        ? (verifiedFiles['src/pages/index.astro'] ? 'src/pages/index.astro' : Object.keys(verifiedFiles)[0])
+        : (verifiedFiles['app/page.tsx'] ? 'app/page.tsx' : verifiedFiles['src/App.tsx'] ? 'src/App.tsx' : Object.keys(verifiedFiles)[0]);
+      if (entryFile) setActiveFile(entryFile);
 
       // Mark all file steps as completed with line counts
       const finalSteps: TimelineStep[] = [

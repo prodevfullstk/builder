@@ -5,24 +5,74 @@ import { authenticateRequest } from "@/lib/auth/server-auth";
 
 export const dynamic = "force-dynamic";
 
+function isAllowedOrigin(origin: string, host: string): boolean {
+  if (!origin) return true; // Non-browser clients (Claude Desktop, CLI, curl)
+  if (
+    origin.startsWith("http://localhost:") ||
+    origin.startsWith("https://localhost:") ||
+    origin.startsWith("http://127.0.0.1:") ||
+    origin.startsWith("https://127.0.0.1:")
+  ) {
+    return true;
+  }
+  if (host && (origin === `http://${host}` || origin === `https://${host}`)) {
+    return true;
+  }
+  const allowed = process.env.ALLOWED_ORIGINS;
+  if (allowed) {
+    const list = allowed.split(",").map((s) => s.trim().toLowerCase());
+    if (list.includes(origin.toLowerCase())) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function getCorsHeaders(req: NextRequest) {
   const origin = req.headers.get("origin") || "";
   const host = req.headers.get("host") || "";
-  const isAllowedLocal = origin.includes("localhost") || origin.includes("127.0.0.1") || origin === "";
+  const allowed = isAllowedOrigin(origin, host);
 
-  return {
-    "Access-Control-Allow-Origin": isAllowedLocal && origin ? origin : "*",
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-MCP-Version, X-Auth-Mode",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-MCP-Version, X-Auth-Mode, X-Demo-User-Id",
+    "Vary": "Origin",
   };
+
+  if (allowed && origin) {
+    headers["Access-Control-Allow-Origin"] = origin;
+    headers["Access-Control-Allow-Credentials"] = "true";
+  }
+
+  return { headers, isAllowed: allowed };
 }
 
 export async function OPTIONS(req: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: getCorsHeaders(req) });
+  const { headers, isAllowed } = getCorsHeaders(req);
+  const origin = req.headers.get("origin");
+  if (origin && !isAllowed) {
+    return new NextResponse("CORS Origin Forbidden", { status: 403 });
+  }
+  return new NextResponse(null, { status: 204, headers });
 }
 
 export async function POST(req: NextRequest) {
-  const corsHeaders = getCorsHeaders(req);
+  const { headers: corsHeaders, isAllowed } = getCorsHeaders(req);
+  const origin = req.headers.get("origin");
+  if (origin && !isAllowed) {
+    return NextResponse.json(
+      {
+        jsonrpc: "2.0",
+        id: null,
+        error: {
+          code: -32003,
+          message: "Forbidden: Origin not permitted",
+          data: { status: 403 },
+        },
+      },
+      { status: 403 }
+    );
+  }
 
   try {
     const body: JsonRpcRequest = await req.json();
@@ -41,15 +91,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Try extracting optional authenticated context for user-owned operations
+    // Extract authenticated context for user-owned operations
     let context: McpRequestContext | undefined = undefined;
     const authHeader = req.headers.get("authorization");
-    if (authHeader) {
+    const authModeHeader = req.headers.get("x-auth-mode");
+    if (authHeader || authModeHeader === "demo") {
       const authResult = await authenticateRequest(req, { allowDemo: true });
       if (authResult.user) {
         context = {
           userId: authResult.user.id,
           authMode: authResult.user.authMode,
+        };
+      } else if (authResult.error) {
+        context = {
+          authError: authResult.error,
         };
       }
     }
@@ -78,7 +133,7 @@ export async function GET(req: NextRequest) {
   const host = req.headers.get("host") || "localhost:3000";
   const protocol = host.includes("localhost") ? "http" : "https";
   const mcpEndpoint = `${protocol}://${host}/api/mcp`;
-  const corsHeaders = getCorsHeaders(req);
+  const { headers: corsHeaders } = getCorsHeaders(req);
 
   return NextResponse.json(
     {

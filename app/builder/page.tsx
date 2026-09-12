@@ -21,6 +21,7 @@ import { parseFinalOutput } from "@/lib/ai/code-parser";
 import { parseToolCalls, executeToolCalls } from "@/lib/ai/mcp-executor";
 import { useCreditsStore } from "@/lib/store/credits-store";
 import { evaluateCandidateChanges } from "@/lib/validation/candidate-pipeline";
+import { synthesizeProjectRequirements } from "@/lib/ai/requirements-generator";
 
 function BuilderWorkspace() {
   const {
@@ -46,6 +47,7 @@ function BuilderWorkspace() {
     setStreamingFile,
     setIsStreaming,
     setActiveSteps,
+    setProjectSpec,
   } = useProjectStore();
 
   const searchParams = useSearchParams();
@@ -190,6 +192,17 @@ function BuilderWorkspace() {
           // Fallback to standard parser
           const { files: parsedFiles, aiExplanation } = parseFinalOutput(accumulated);
           const candidateFiles = { ...parsedFiles, ...genFiles };
+
+          // Synthesize structured requirements specification (P1-D requirement)
+          const { spec, requirementsMarkdown } = synthesizeProjectRequirements(
+            initialPrompt,
+            targetFramework,
+            (urlDb || newProj.dbProvider) as string,
+            authProvider
+          );
+          setProjectSpec(spec);
+          newProj.spec = spec;
+          candidateFiles['requirements.md'] = requirementsMarkdown;
 
           // Validate candidate against framework contract
           addLog(`[Candidate Pipeline] Validating initial ${targetFramework.toUpperCase()} build...`);

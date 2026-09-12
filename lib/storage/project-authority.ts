@@ -16,17 +16,22 @@
  */
 
 import { Framework, ChatMessage } from '@/lib/store/project-store';
+import { ProjectSpec, ValidationEvidence } from '@/lib/validation/types';
 
 export interface AuthoritativeProject {
   id: string;
   owner_id: string;
   name: string;
   framework: Framework;
+  frameworkVersion?: string;
+  revision?: number;
   dbProvider?: string;
   authProvider?: string;
+  spec?: ProjectSpec;
   files: Record<string, string>;
   messages: ChatMessage[];
   activeFile?: string;
+  validationHistory?: ValidationEvidence[];
   createdAt: number;
   updatedAt: number;
 }
@@ -41,6 +46,18 @@ export interface OwnershipVerificationResult {
 // In-memory authority store for active server session / local fallback
 const serverProjectRegistry: Map<string, AuthoritativeProject> = new Map();
 
+// Seed initial demo project with explicit owner
+seedAuthoritativeProject(
+  "demo-saas",
+  "system-demo",
+  "AI Voice Agent SaaS",
+  "nextjs",
+  {
+    "package.json": JSON.stringify({ name: "ai-voice-saas", dependencies: { react: "^19.0.0", next: "^15.0.0" } }, null, 2),
+    "app/page.tsx": `'use client';\n\nexport default function Page() { return <div>Welcome to AI Voice SaaS</div>; }`,
+  }
+);
+
 /**
  * Register or update a project in the server authority registry
  */
@@ -51,10 +68,38 @@ export function registerServerProject(project: AuthoritativeProject): void {
   if (!project.owner_id) {
     throw new Error('Project owner_id is required.');
   }
+  const existing = serverProjectRegistry.get(project.id);
+  const revision = (existing?.revision || 0) + 1;
   serverProjectRegistry.set(project.id, {
     ...project,
+    revision,
     updatedAt: Date.now(),
   });
+}
+
+/**
+ * Record validation evidence into project audit history
+ */
+export function recordValidationEvidence(projectId: string, evidence: ValidationEvidence): void {
+  const project = serverProjectRegistry.get(projectId);
+  if (project) {
+    if (!project.validationHistory) {
+      project.validationHistory = [];
+    }
+    project.validationHistory.push(evidence);
+    // Keep last 20 records
+    if (project.validationHistory.length > 20) {
+      project.validationHistory = project.validationHistory.slice(-20);
+    }
+  }
+}
+
+/**
+ * Get validation audit trail for a project
+ */
+export function getValidationHistory(projectId: string): ValidationEvidence[] {
+  const project = serverProjectRegistry.get(projectId);
+  return project?.validationHistory || [];
 }
 
 /**
@@ -71,8 +116,9 @@ export function getServerProject(projectId: string): AuthoritativeProject | null
 export function listServerProjectsForOwner(ownerId: string): AuthoritativeProject[] {
   if (!ownerId) return [];
   const list: AuthoritativeProject[] = [];
+  const isDemo = ownerId === 'demo-user' || ownerId === 'system-demo';
   for (const proj of serverProjectRegistry.values()) {
-    if (proj.owner_id === ownerId) {
+    if (proj.owner_id === ownerId || (isDemo && proj.owner_id === 'system-demo')) {
       list.push(proj);
     }
   }
@@ -112,8 +158,11 @@ export async function verifyProjectOwnership(
     };
   }
 
+  // Allow demo identities access to the seeded system-demo project
+  const isDemoAuthorized = (authenticatedUserId === 'demo-user' || authenticatedUserId === 'system-demo') && project.owner_id === 'system-demo';
+
   // 3. Ownership verification
-  if (project.owner_id !== authenticatedUserId) {
+  if (project.owner_id !== authenticatedUserId && !isDemoAuthorized) {
     return {
       authorized: false,
       error: 'Forbidden: You do not have permission to access or modify this project.',

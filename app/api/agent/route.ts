@@ -115,12 +115,15 @@ SURGICAL REPAIR INSTRUCTIONS:
       userContent = `PREVIEW SANDBOX ERROR DETECTED:\n${message}\n\nCURRENT PROJECT FILES (${framework}):\n${fileSummary}\n\nDIAGNOSTIC PROTOCOL REQUIRED:\n1. Identify error category (TYPE_A to TYPE_E).\n2. Apply minimal surgical fix to the offending file without deleting working features or reducing state.\n3. Output corrected file via <TOOL_CALL> (edit_file/write_file) or corrected <FILES> block.`;
     } else if (mode === "build" && Object.keys(files).length > 0) {
       // Provide existing project context for incremental edits & fixes
-      // Prioritize files mentioned in the prompt and activeFile
+      // Prioritize files mentioned in the prompt, activeFile, and requirements.md
       const mentionedPaths = Object.keys(files).filter((p) =>
         message.toLowerCase().includes(p.toLowerCase())
       );
       if (activeFile && !mentionedPaths.includes(activeFile) && files[activeFile]) {
         mentionedPaths.unshift(activeFile);
+      }
+      if (files['requirements.md'] && !mentionedPaths.includes('requirements.md')) {
+        mentionedPaths.unshift('requirements.md');
       }
 
       const fileSummary = Object.entries(files)
@@ -136,7 +139,10 @@ SURGICAL REPAIR INSTRUCTIONS:
           return `\`\`\`${path}\n${String(content).slice(0, maxLen)}\n\`\`\``;
         })
         .join("\n\n");
-      userContent = `CURRENT PROJECT (${framework}):\n${fileSummary}\n\nINCREMENTAL EDIT REQUEST:\n${message}\n\nINSTRUCTIONS FOR INCREMENTAL FIX/EDIT:\nApply the requested changes to the project. Output the modified or new files in standard code blocks (e.g. \`\`\`tsx filename=path/to/file) or via <TOOL_CALL>. Preserve all existing working features, routes, and styling!`;
+      const requirementsContext = files['requirements.md']
+        ? `PROJECT SPECIFICATION & ARCHITECTURE REQUIREMENTS:\n${files['requirements.md']}\n\n`
+        : '';
+      userContent = `${requirementsContext}CURRENT PROJECT (${framework}):\n${fileSummary}\n\nINCREMENTAL EDIT REQUEST:\n${message}\n\nINSTRUCTIONS FOR INCREMENTAL FIX/EDIT:\nApply the requested changes to the project. Output the modified or new files in standard code blocks (e.g. \`\`\`tsx filename=path/to/file) or via <TOOL_CALL>. Preserve all existing working features, routes, and styling! Adhere strictly to the project requirements above.`;
     }
 
     const stream = await createGeminiStream({

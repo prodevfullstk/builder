@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { ProjectSpec } from '@/lib/validation/types';
 
 export type Framework = 'nextjs' | 'vite' | 'astro' | 'node';
 export type BuilderMode = 'split' | 'code' | 'preview';
@@ -34,6 +35,8 @@ export interface ProjectState {
   streamingFile: string | null;
   isStreaming: boolean;
   framework: Framework;
+  frameworkVersion: string;
+  projectSpec: ProjectSpec | null;
   
   // Project Identity & Persistence
   projectId: string | null;
@@ -77,6 +80,8 @@ export interface ProjectState {
   addStep: (step: TimelineStep) => void;
   updateStep: (id: string, updates: Partial<TimelineStep>) => void;
   setFramework: (framework: Framework) => void;
+  setFrameworkVersion: (frameworkVersion: string) => void;
+  setProjectSpec: (projectSpec: ProjectSpec | null) => void;
   setMode: (mode: BuilderMode) => void;
   setStatus: (status: BuilderStatus, message?: string) => void;
   setDbProvider: (db: ProjectState['dbProvider']) => void;
@@ -117,6 +122,8 @@ export const useProjectStore = create<ProjectState>((set) => ({
   streamingFile: null,
   isStreaming: false,
   framework: 'nextjs',
+  frameworkVersion: '15.1.7',
+  projectSpec: null,
   mode: 'split',
   status: 'idle',
   statusMessage: '',
@@ -220,6 +227,8 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setActiveFile: (activeFile) => set({ activeFile }),
 
   setFramework: (framework) => set({ framework }),
+  setFrameworkVersion: (frameworkVersion) => set({ frameworkVersion }),
+  setProjectSpec: (projectSpec) => set({ projectSpec }),
 
   setMode: (mode) => set({ mode }),
 

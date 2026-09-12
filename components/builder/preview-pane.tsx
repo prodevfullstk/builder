@@ -24,6 +24,8 @@ import { InstantPreview } from '@/components/preview/instant-preview';
 import { detectBackendEntry } from '@/lib/sandbox/detect-backend';
 import { parseToolCalls, executeToolCalls } from '@/lib/ai/mcp-executor';
 import { parseFinalOutput } from '@/lib/ai/code-parser';
+import { evaluateCandidateChanges } from '@/lib/validation/candidate-pipeline';
+import { bundleProjectWithEsbuild } from '@/lib/preview/esbuild-compiler';
 
 // Dynamically import sandbox engines with ssr: false
 const VercelPreview = dynamic(
@@ -61,6 +63,7 @@ export function PreviewPane() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [backendUrl, setBackendUrl] = useState<string | null>(null);
   const [engine, setEngine] = useState<'vercel' | 'instant' | 'nodebox'>('vercel');
+  const [compilationMode, setCompilationMode] = useState<'simulated-dom' | 'virtual-compiled'>('simulated-dom');
 
   const [isFixing, setIsFixing] = useState(false);
 
@@ -104,24 +107,55 @@ export function PreviewPane() {
         accumulated += decoder.decode(value, { stream: true });
       }
 
-      // 1. Check for MCP tool calls
+      // Extract candidate changes
+      let candidateFiles: Record<string, string> = { ...files };
       const { toolCalls } = parseToolCalls(accumulated);
       if (toolCalls.length > 0) {
         const result = executeToolCalls(files, toolCalls);
-        setFiles(result.updatedFiles);
+        candidateFiles = result.updatedFiles;
         result.logs.forEach((l) => addLog(l));
-        addLog(`[Auto-Fix] Applied ${toolCalls.length} tool repairs.`);
+        addLog(`[Auto-Fix] Parsed ${toolCalls.length} repair tool calls.`);
       } else {
-        // 2. Fallback to structured <FILES> or fences
         const { files: fixedFiles } = parseFinalOutput(accumulated);
         if (Object.keys(fixedFiles).length > 0) {
-          setFiles({ ...files, ...fixedFiles });
-          addLog(`[Auto-Fix] Repaired ${Object.keys(fixedFiles).length} files.`);
+          candidateFiles = { ...files, ...fixedFiles };
+          addLog(`[Auto-Fix] Parsed ${Object.keys(fixedFiles).length} repaired files.`);
+        } else {
+          addLog('[Auto-Fix] No repair candidates produced by AI.');
+          return;
         }
       }
 
+      // 1. Candidate Validation Gate (Security, framework contract, secrets)
+      addLog(`[Auto-Fix] Validating candidate repair changes against ${framework.toUpperCase()} contract...`);
+      const evalResult = await evaluateCandidateChanges({
+        projectId: projectId || 'workspace',
+        framework,
+        currentFiles: files,
+        candidateFiles,
+        isNewBuild: false,
+      });
+
+      if (!evalResult.accepted) {
+        addLog(`[Auto-Fix Rejected] Candidate failed validation: ${evalResult.diagnostics.join(' | ')}`);
+        setRuntimeError(`Auto-Fix rejected: ${evalResult.diagnostics[0] || 'Unsafe changes'}`);
+        return;
+      }
+
+      // 2. Virtual Compilation Verification Gate
+      addLog('[Auto-Fix] Verifying compilation of repaired files...');
+      const checkResult = await bundleProjectWithEsbuild(evalResult.committedFiles);
+      if (checkResult.errors.length > 0) {
+        addLog(`[Auto-Fix Rejected] Repair code caused compilation errors: ${checkResult.errors[0].slice(0, 100)}`);
+        setRuntimeError(`Compilation Error: ${checkResult.errors[0]}`);
+        return;
+      }
+
+      // 3. Transactional Commit
+      setFiles(evalResult.committedFiles);
       clearRuntimeError();
       setPreviewKey((k) => k + 1);
+      addLog(`[Auto-Fix] ✓ Successfully repaired and verified (${evalResult.evidence.checks.length} checks passed, 0 errors).`);
     } catch (err: any) {
       addLog(`[Auto-Fix Failed] ${err?.message || 'Repair attempt failed'}`);
     } finally {
@@ -197,25 +231,53 @@ export function PreviewPane() {
           </div>
         </div>
 
-        {/* Center: URL Bar Mockup */}
-        <div className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-zinc-950 border border-zinc-800/80 text-[11px] text-zinc-400 font-mono">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
-          <span className="truncate max-w-[220px]">
-            {engine === 'vercel'
-              ? previewUrl ? previewUrl.replace(/^https?:\/\//, '') : 'sandbox.vercel.run'
-              : engine === 'instant'
-              ? 'preview.local'
-              : 'localhost:3000'}
-          </span>
-          {hasBackend && engine === 'instant' && (
-            <span
-              className="ml-1 flex items-center gap-0.5 text-emerald-400/80"
-              title="Backend API auto-detected and bridged via Nodebox"
-            >
-              <Server className="w-2.5 h-2.5" />
-              <span className="text-[10px]">+API</span>
+        {/* Center: URL Bar Mockup & Truthful Verification Badge */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-zinc-950 border border-zinc-800/80 text-[11px] text-zinc-400 font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
+            <span className="truncate max-w-[180px]">
+              {engine === 'vercel'
+                ? previewUrl ? previewUrl.replace(/^https?:\/\//, '') : 'sandbox.vercel.run'
+                : engine === 'instant'
+                ? 'preview.local'
+                : 'localhost:3000'}
             </span>
-          )}
+            {hasBackend && engine === 'instant' && (
+              <span
+                className="ml-1 flex items-center gap-0.5 text-emerald-400/80"
+                title="Backend API auto-detected and bridged via Nodebox"
+              >
+                <Server className="w-2.5 h-2.5" />
+                <span className="text-[10px]">+API</span>
+              </span>
+            )}
+          </div>
+
+          {/* Truthful Preview Mode Badge */}
+          <span
+            className={`px-2 py-0.5 rounded text-[10px] font-mono border ${
+              engine === 'vercel'
+                ? previewUrl
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                  : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                : engine === 'instant'
+                ? compilationMode === 'virtual-compiled'
+                  ? 'bg-blue-500/10 border-blue-500/30 text-blue-400'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                : 'bg-violet-500/10 border-violet-500/30 text-violet-400'
+            }`}
+            title="Active preview engine and verification tier"
+          >
+            {engine === 'vercel'
+              ? previewUrl
+                ? 'Native Verified (Vercel)'
+                : 'Native Sandbox (Initializing)'
+              : engine === 'instant'
+              ? compilationMode === 'virtual-compiled'
+                ? 'Virtual Compilation (esbuild)'
+                : 'Visual Preview (Simulated DOM)'
+              : 'Nodebox Container'}
+          </span>
         </div>
 
         {/* Right: Actions */}
@@ -353,6 +415,7 @@ export function PreviewPane() {
               onScreenshot={(dataUrl) => {
                 updateLastMessageScreenshot(dataUrl);
               }}
+              onEngineStatusChange={setCompilationMode}
             />
           ) : (
             <NodeboxPreview

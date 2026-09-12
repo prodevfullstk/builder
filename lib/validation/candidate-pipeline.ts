@@ -18,6 +18,7 @@ const SECRET_PATTERNS: Array<{ name: string; regex: RegExp }> = [
   { name: 'RSA Private Key', regex: /-----BEGIN (?:RSA )?PRIVATE KEY-----/ },
   { name: 'Generic Private Key', regex: /-----BEGIN OPENSSH PRIVATE KEY-----/ },
   { name: 'Supabase Service Role Key', regex: /eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/ },
+  { name: 'OpenAI Secret Key', regex: /\bsk-[A-Za-z0-9_-]{20,}\b/ },
 ];
 
 /**
@@ -75,17 +76,25 @@ export async function evaluateCandidateChanges(params: {
   projectId: string;
   framework: string;
   currentFiles: Record<string, string>;
-  candidateFiles: Record<string, string>;
+  candidateFiles: Record<string, string | null>;
   isNewBuild?: boolean;
 }): Promise<CandidateEvaluationResult> {
   const { projectId, framework, currentFiles, candidateFiles, isNewBuild = false } = params;
   const validationId = 'val_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6);
   const timestamp = new Date().toISOString();
 
-  // 1. Construct candidate workspace
+  // 1. Construct candidate workspace with proper deletion handling
   const candidateWorkspace: Record<string, string> = isNewBuild
-    ? { ...candidateFiles }
-    : { ...currentFiles, ...candidateFiles };
+    ? {}
+    : { ...currentFiles };
+
+  for (const [filePath, content] of Object.entries(candidateFiles)) {
+    if (content === null || content === undefined) {
+      delete candidateWorkspace[filePath];
+    } else {
+      candidateWorkspace[filePath] = content;
+    }
+  }
 
   const allChecks: ValidationCheck[] = [];
   const allDiagnostics: string[] = [];

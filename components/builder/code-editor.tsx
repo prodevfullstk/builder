@@ -3,6 +3,7 @@
 import React, { Component, ErrorInfo, ReactNode, useEffect, useRef } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
 import { useProjectStore } from '@/lib/store/project-store';
+import { evaluateCandidateChanges } from '@/lib/validation/candidate-pipeline';
 import { FileCode, AlertCircle, Copy, Check, FilePlus, Sparkles, Send, X, Loader2 } from 'lucide-react';
 
 interface ErrorBoundaryProps {
@@ -54,7 +55,7 @@ interface CodeEditorProps {
 }
 
 export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
-  const { files, activeFile, updateFile, isStreaming, streamingFile, requestCreateFile, framework, dbProvider, authProvider } = useProjectStore();
+  const { files, activeFile, updateFile, isStreaming, streamingFile, requestCreateFile, framework, dbProvider, authProvider, projectId, addLog } = useProjectStore();
   const editorRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = React.useState(false);
@@ -63,6 +64,7 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
   const [aiBarOpen, setAiBarOpen] = React.useState(false);
   const [aiPrompt, setAiPrompt] = React.useState('');
   const [aiLoading, setAiLoading] = React.useState(false);
+  const [aiError, setAiError] = React.useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const aiInputRef = useRef<HTMLInputElement>(null);
@@ -78,6 +80,7 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
     setIsSaved(true);
     setAiBarOpen(false);
     setAiPrompt('');
+    setAiError(null);
   }, [activeFile]);
 
   // Auto-focus AI input when bar opens
@@ -149,6 +152,7 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
   const handleAskAI = async () => {
     if (!aiPrompt.trim() || !activeFile || aiLoading) return;
     setAiLoading(true);
+    setAiError(null);
     try {
       const response = await fetch('/api/agent', {
         method: 'POST',
@@ -174,23 +178,53 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
         result += decoder.decode(value, { stream: true });
       }
 
-      // Extract file content from <FILES> block or raw response
+      // Extract proposed file content from <FILES> block or raw response
+      let proposedContent: string | null = null;
       const filesMatch = result.match(/<FILES>\s*([\s\S]*?)\s*<\/FILES>/);
       if (filesMatch) {
         try {
           const json = JSON.parse(filesMatch[1].trim());
           const file = json.files?.find((f: any) => f.path === activeFile) || json.files?.[0];
-          if (file?.content) updateFile(activeFile, file.content);
-        } catch { updateFile(activeFile, result.split('<FILES>')[0].trim()); }
+          if (file?.content) proposedContent = file.content;
+        } catch {
+          proposedContent = result.split('<FILES>')[0].trim();
+        }
       } else {
-        // If no FILES block, use raw response as new file content
         const cleaned = result.replace(/<FILES>[\s\S]*<\/FILES>/g, '').trim();
-        if (cleaned.length > 20) updateFile(activeFile, cleaned);
+        if (cleaned.length > 20) proposedContent = cleaned;
       }
+
+      if (!proposedContent) {
+        setAiError('AI did not produce valid replacement code.');
+        return;
+      }
+
+      // Candidate Validation Gate (Security, framework contract, secrets)
+      addLog(`[Monaco AI Edit] Validating candidate changes for ${activeFile}...`);
+      const evalResult = await evaluateCandidateChanges({
+        projectId: projectId || 'workspace',
+        framework,
+        currentFiles: files,
+        candidateFiles: { ...files, [activeFile]: proposedContent },
+        isNewBuild: false,
+      });
+
+      if (!evalResult.accepted) {
+        const errorMsg = evalResult.diagnostics[0] || 'AI edit violated framework or security validation.';
+        setAiError(errorMsg);
+        addLog(`[Monaco AI Edit Rejected] ${evalResult.diagnostics.join(' | ')}`);
+        return;
+      }
+
+      // Transactional commit: candidate validation passed
+      updateFile(activeFile, proposedContent);
       setAiPrompt('');
       setAiBarOpen(false);
+      setAiError(null);
+      addLog(`[Monaco AI Edit] ✓ Successfully updated ${activeFile} (${evalResult.evidence.checks.length} checks passed).`);
     } catch (err: any) {
       console.error('AI edit failed:', err);
+      setAiError(err?.message || 'AI edit request failed.');
     } finally {
       setAiLoading(false);
     }
@@ -267,32 +301,43 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
 
       {/* AI Prompt Bar — slides in below tab bar */}
       {aiBarOpen && activeFile && (
-        <div className="shrink-0 flex items-center gap-2 px-3 py-2 bg-zinc-900 border-b border-violet-500/30">
-          <Sparkles className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-          <input
-            ref={aiInputRef}
-            value={aiPrompt}
-            onChange={(e) => setAiPrompt(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleAskAI(); if (e.key === 'Escape') setAiBarOpen(false); }}
-            placeholder={`Ask AI to modify ${activeFile.split('/').pop()}...`}
-            className="flex-1 bg-transparent text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none font-mono"
-            disabled={aiLoading}
-          />
-          {aiLoading ? (
-            <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin shrink-0" />
-          ) : (
-            <button
-              onClick={handleAskAI}
-              disabled={!aiPrompt.trim()}
-              className="p-1 text-violet-400 hover:text-violet-200 disabled:opacity-30 transition-colors shrink-0"
-              title="Send to AI"
-            >
-              <Send className="w-3.5 h-3.5" />
+        <div className="shrink-0 flex flex-col bg-zinc-900 border-b border-violet-500/30">
+          <div className="flex items-center gap-2 px-3 py-2">
+            <Sparkles className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+            <input
+              ref={aiInputRef}
+              value={aiPrompt}
+              onChange={(e) => {
+                setAiPrompt(e.target.value);
+                if (aiError) setAiError(null);
+              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAskAI(); if (e.key === 'Escape') setAiBarOpen(false); }}
+              placeholder={`Ask AI to modify ${activeFile.split('/').pop()}...`}
+              className="flex-1 bg-transparent text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none font-mono"
+              disabled={aiLoading}
+            />
+            {aiLoading ? (
+              <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin shrink-0" />
+            ) : (
+              <button
+                onClick={handleAskAI}
+                disabled={!aiPrompt.trim()}
+                className="p-1 text-violet-400 hover:text-violet-200 disabled:opacity-30 transition-colors shrink-0"
+                title="Send to AI"
+              >
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            )}
+            <button onClick={() => setAiBarOpen(false)} className="p-1 text-zinc-600 hover:text-zinc-400 shrink-0">
+              <X className="w-3 h-3" />
             </button>
+          </div>
+          {aiError && (
+            <div className="px-3 py-1 bg-red-500/15 border-t border-red-500/30 text-[11px] text-red-300 font-mono flex items-center gap-1.5">
+              <AlertCircle className="w-3 h-3 text-red-400 shrink-0" />
+              <span className="truncate">{aiError}</span>
+            </div>
           )}
-          <button onClick={() => setAiBarOpen(false)} className="p-1 text-zinc-600 hover:text-zinc-400 shrink-0">
-            <X className="w-3 h-3" />
-          </button>
         </div>
       )}
 

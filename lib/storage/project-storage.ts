@@ -4,6 +4,7 @@
  */
 
 import { ChatMessage, Framework, ProjectState } from "@/lib/store/project-store";
+import { ProjectSpec } from "@/lib/validation/types";
 
 export interface SavedProject {
   id: string;
@@ -11,6 +12,7 @@ export interface SavedProject {
   framework: Framework;
   dbProvider: ProjectState['dbProvider'];
   authProvider: ProjectState['authProvider'];
+  spec?: ProjectSpec;
   files: Record<string, string>;
   messages: ChatMessage[];
   activeFile?: string;

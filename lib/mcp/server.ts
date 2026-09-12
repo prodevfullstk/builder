@@ -15,32 +15,23 @@ import {
   getServerProject,
   registerServerProject,
   listServerProjectsForOwner,
+  verifyProjectOwnership,
 } from "../storage/project-authority";
 
-// In-memory project store for MCP sessions
-const memoryProjects: Map<string, { id: string; name: string; framework: string; files: Record<string, string>; updatedAt: number; owner_id?: string }> = new Map();
-
-// Seed initial demo project with explicit owner
-memoryProjects.set("demo-saas", {
-  id: "demo-saas",
-  name: "AI Voice Agent SaaS",
-  framework: "nextjs",
-  owner_id: "system-demo",
-  files: {
-    "package.json": JSON.stringify({ name: "ai-voice-saas", dependencies: { react: "^19.0.0", next: "^15.0.0" } }, null, 2),
-    "app/page.tsx": `'use client';\n\nexport default function Page() { return <div>Welcome to AI Voice SaaS</div>; }`,
-  },
-  updatedAt: Date.now(),
-});
-
-function makeError(code: number, message: string, hint?: string, retryable = false): MCPErrorEnvelope {
+function makeError(
+  code: number,
+  message: string,
+  hint?: string,
+  retryable = false,
+  status = 500
+): MCPErrorEnvelope {
   return {
     code,
     message,
     data: {
       hint,
       retryable,
-      status: code === -32602 ? 400 : code === -32601 ? 404 : 500,
+      status: status || (code === -32602 ? 400 : code === -32601 ? 404 : 500),
     },
   };
 }
@@ -48,7 +39,20 @@ function makeError(code: number, message: string, hint?: string, retryable = fal
 export interface McpRequestContext {
   userId?: string;
   authMode?: 'real' | 'demo';
+  authError?: string;
 }
+
+const PROJECT_SCOPED_TOOLS = new Set([
+  "list_projects",
+  "get_project",
+  "create_project",
+  "list_files",
+  "get_file",
+  "write_file",
+  "edit_file",
+  "delete_file",
+  "audit_code",
+]);
 
 export async function handleMcpRequest(
   request: JsonRpcRequest,
@@ -99,11 +103,32 @@ export async function handleMcpRequest(
           return {
             jsonrpc: "2.0",
             id,
-            error: makeError(-32602, "Tool name is required in params.name", "Provide 'name' parameter matching one of the tools in tools/list"),
+            error: makeError(
+              -32602,
+              "Tool name is required in params.name",
+              "Provide 'name' parameter matching one of the tools in tools/list",
+              false,
+              400
+            ),
           };
         }
 
         const result = await executeMcpTool(toolName, args, context);
+
+        if (
+          result &&
+          typeof result === "object" &&
+          "code" in result &&
+          "message" in result &&
+          "data" in result
+        ) {
+          return {
+            jsonrpc: "2.0",
+            id,
+            error: result as MCPErrorEnvelope,
+          };
+        }
+
         return {
           jsonrpc: "2.0",
           id,
@@ -230,49 +255,79 @@ export async function handleMcpRequest(
   }
 }
 
-/**
- * Resolve project explicitly by ID without any arbitrary "first project" fallback
- */
-function resolveProjectExplicit(projectId: any): { id: string; name: string; framework: string; files: Record<string, string>; updatedAt: number; owner_id?: string } {
-  if (!projectId || typeof projectId !== 'string' || !projectId.trim()) {
-    throw new Error("Validation Error: 'projectId' parameter is required. Implicit fallback to arbitrary or first project is strictly forbidden.");
+async function executeMcpTool(
+  name: string,
+  args: Record<string, any>,
+  context?: McpRequestContext
+): Promise<any> {
+  // 1. Mandatory authentication check for all project-scoped tools (P0-D requirement)
+  if (PROJECT_SCOPED_TOOLS.has(name)) {
+    if (!context?.userId) {
+      const reason =
+        context?.authError ||
+        "Authentication required: Missing or invalid Authorization credentials.";
+      return makeError(
+        -32001,
+        `Unauthorized: ${reason}`,
+        "Provide a valid Bearer token in the Authorization header or X-Auth-Mode: demo.",
+        false,
+        401
+      );
+    }
   }
 
-  const cleanId = projectId.trim();
-  const memoryProj = memoryProjects.get(cleanId);
-  if (memoryProj) return memoryProj;
-
-  // Check authoritative project registry
-  const authProj = getServerProject(cleanId);
-  if (authProj) {
-    return {
-      id: authProj.id,
-      name: authProj.name,
-      framework: authProj.framework,
-      files: authProj.files,
-      updatedAt: authProj.updatedAt,
-      owner_id: authProj.owner_id,
-    };
-  }
-
-  throw new Error(`Project '${cleanId}' not found. Verify the project ID and call list_projects.`);
-}
-
-async function executeMcpTool(name: string, args: Record<string, any>, context?: McpRequestContext): Promise<any> {
+  // 2. Project-scoped tools execution
   switch (name) {
     case "list_projects": {
-      const list = Array.from(memoryProjects.values()).map((p) => ({
+      const projects = listServerProjectsForOwner(context!.userId!).map((p) => ({
         id: p.id,
         name: p.name,
         framework: p.framework,
         fileCount: Object.keys(p.files).length,
         updatedAt: p.updatedAt,
       }));
-      return { projects: list };
+      return { projects };
+    }
+
+    case "create_project": {
+      const id = "proj_" + Math.random().toString(36).substring(2, 9);
+      const framework = args.framework || "nextjs";
+      const ownerId = context!.userId!;
+      const newProj: AuthoritativeProject = {
+        id,
+        owner_id: ownerId,
+        name: args.name || "New Project",
+        framework: framework as any,
+        files: {
+          "package.json": JSON.stringify(
+            {
+              name: args.name?.toLowerCase().replace(/[^a-z0-9]/g, "-") || "new-project",
+              framework,
+            },
+            null,
+            2
+          ),
+        },
+        messages: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      registerServerProject(newProj);
+      return { success: true, project: newProj };
     }
 
     case "get_project": {
-      const proj = resolveProjectExplicit(args.projectId);
+      const check = await verifyProjectOwnership(args.projectId, context!.userId!);
+      if (!check.authorized) {
+        return makeError(
+          check.status === 400 ? -32602 : check.status === 404 ? -32601 : -32003,
+          check.error || "Access denied",
+          undefined,
+          false,
+          check.status
+        );
+      }
+      const proj = check.project!;
       return {
         id: proj.id,
         name: proj.name,
@@ -282,123 +337,176 @@ async function executeMcpTool(name: string, args: Record<string, any>, context?:
       };
     }
 
-    case "create_project": {
-      const id = "proj_" + Math.random().toString(36).substring(2, 9);
-      const framework = args.framework || "nextjs";
-      const ownerId = context?.userId || "anonymous";
-      const newProj = {
-        id,
-        name: args.name || "New Project",
-        framework,
-        owner_id: ownerId,
-        files: {
-          "package.json": JSON.stringify({ name: args.name?.toLowerCase().replace(/[^a-z0-9]/g, "-"), framework }, null, 2),
-        },
-        updatedAt: Date.now(),
-      };
-      memoryProjects.set(id, newProj);
-      registerServerProject({
-        id,
-        owner_id: ownerId,
-        name: newProj.name,
-        framework: framework as any,
-        files: newProj.files,
-        messages: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      });
-      return { success: true, project: newProj };
-    }
-
     case "list_files": {
-      const proj = resolveProjectExplicit(args.projectId);
-      return { files: Object.keys(proj.files) };
+      const check = await verifyProjectOwnership(args.projectId, context!.userId!);
+      if (!check.authorized) {
+        return makeError(
+          check.status === 400 ? -32602 : check.status === 404 ? -32601 : -32003,
+          check.error || "Access denied",
+          undefined,
+          false,
+          check.status
+        );
+      }
+      return { files: Object.keys(check.project!.files) };
     }
 
     case "get_file": {
-      const proj = resolveProjectExplicit(args.projectId);
+      const check = await verifyProjectOwnership(args.projectId, context!.userId!);
+      if (!check.authorized) {
+        return makeError(
+          check.status === 400 ? -32602 : check.status === 404 ? -32601 : -32003,
+          check.error || "Access denied",
+          undefined,
+          false,
+          check.status
+        );
+      }
+      const proj = check.project!;
       const path = String(args.path || "").replace(/^\/+/, "");
       if (!path) {
-        throw new Error("Validation Error: 'path' parameter is required.");
+        return makeError(-32602, "Validation Error: 'path' parameter is required.", undefined, false, 400);
       }
       if (!proj.files[path]) {
-        throw new Error(`File '${path}' does not exist in project '${proj.id}'. Call list_files to see available paths.`);
+        return makeError(
+          -32602,
+          `File '${path}' does not exist in project '${proj.id}'. Call list_files to see available paths.`,
+          undefined,
+          false,
+          404
+        );
       }
       return { path, content: proj.files[path] };
     }
 
     case "write_file": {
-      const proj = resolveProjectExplicit(args.projectId);
+      const check = await verifyProjectOwnership(args.projectId, context!.userId!);
+      if (!check.authorized) {
+        return makeError(
+          check.status === 400 ? -32602 : check.status === 404 ? -32601 : -32003,
+          check.error || "Access denied",
+          undefined,
+          false,
+          check.status
+        );
+      }
       const path = String(args.path || "").replace(/^\/+/, "");
       if (!path) {
-        throw new Error("Validation Error: 'path' parameter is required.");
+        return makeError(-32602, "Validation Error: 'path' parameter is required.", undefined, false, 400);
       }
-      // SECURITY: MCP tools stage changes only. The calling client must pass the
-      // returned candidateDiff through evaluateCandidateChanges before committing
-      // to the authoritative project store. Direct mutation here only affects the
-      // MCP session's in-memory copy — not the builder's authoritative Zustand store.
-      const previousContent = proj.files[path] ?? null;
-      proj.files[path] = String(args.content || "");
-      proj.updatedAt = Date.now();
+      const content = String(args.content ?? "");
+      // SECURITY: MCP tools stage changes ONLY. Direct mutation of the authoritative
+      // project store without candidate validation and compilation evidence is strictly forbidden.
       return {
         success: true,
         path,
-        lines: proj.files[path].split("\n").length,
+        lines: content.split("\n").length,
         staged: true,
-        note: "Change staged in MCP session. Call evaluate_candidate or pass candidateDiff to the builder for authoritative commit.",
-        candidateDiff: { [path]: String(args.content || "") },
+        candidateDiff: { [path]: content },
+        note: "Change staged in MCP session. Must pass candidate validation and virtual compilation before authoritative commit.",
       };
     }
 
     case "edit_file": {
-      const proj = resolveProjectExplicit(args.projectId);
+      const check = await verifyProjectOwnership(args.projectId, context!.userId!);
+      if (!check.authorized) {
+        return makeError(
+          check.status === 400 ? -32602 : check.status === 404 ? -32601 : -32003,
+          check.error || "Access denied",
+          undefined,
+          false,
+          check.status
+        );
+      }
+      const proj = check.project!;
       const path = String(args.path || "").replace(/^\/+/, "");
       if (!path) {
-        throw new Error("Validation Error: 'path' parameter is required.");
+        return makeError(-32602, "Validation Error: 'path' parameter is required.", undefined, false, 400);
       }
       if (!proj.files[path]) {
-        throw new Error(`Cannot edit '${path}' because it does not exist. Call write_file to create it.`);
+        return makeError(
+          -32602,
+          `Cannot edit '${path}' because it does not exist. Call write_file to create it.`,
+          undefined,
+          false,
+          404
+        );
       }
       const existing = proj.files[path];
-      const target = String(args.targetContent || "");
-      const replacement = String(args.replacementContent || "");
+      const target = String(args.targetContent ?? "");
+      const replacement = String(args.replacementContent ?? "");
       if (!existing.includes(target)) {
-        throw new Error(`targetContent not found in ${path}. Verify exact lines before calling edit_file.`);
+        return makeError(
+          -32602,
+          `targetContent not found in ${path}. Verify exact lines before calling edit_file.`,
+          undefined,
+          false,
+          400
+        );
       }
-      // SECURITY: staged change only — same semantics as write_file
-      proj.files[path] = existing.replace(target, replacement);
-      proj.updatedAt = Date.now();
+      const newContent = existing.replace(target, replacement);
+      // SECURITY: staged candidate change only
       return {
         success: true,
         path,
         action: "updated",
         staged: true,
-        note: "Change staged in MCP session. Pass candidateDiff to the builder for authoritative commit.",
-        candidateDiff: { [path]: proj.files[path] },
+        candidateDiff: { [path]: newContent },
+        note: "Change staged in MCP session. Must pass candidate validation and virtual compilation before authoritative commit.",
       };
     }
 
     case "delete_file": {
-      const proj = resolveProjectExplicit(args.projectId);
+      const check = await verifyProjectOwnership(args.projectId, context!.userId!);
+      if (!check.authorized) {
+        return makeError(
+          check.status === 400 ? -32602 : check.status === 404 ? -32601 : -32003,
+          check.error || "Access denied",
+          undefined,
+          false,
+          check.status
+        );
+      }
+      const proj = check.project!;
       const path = String(args.path || "").replace(/^\/+/, "");
       if (!path) {
-        throw new Error("Validation Error: 'path' parameter is required.");
+        return makeError(-32602, "Validation Error: 'path' parameter is required.", undefined, false, 400);
       }
-      // SECURITY: staged deletion — builder must confirm via candidate pipeline
-      delete proj.files[path];
-      proj.updatedAt = Date.now();
+      if (!args.confirm) {
+        return makeError(
+          -32602,
+          "Validation Error: 'confirm: true' is required to stage file deletion.",
+          undefined,
+          false,
+          400
+        );
+      }
+      if (!proj.files[path]) {
+        return makeError(-32602, `File '${path}' does not exist in project '${proj.id}'.`, undefined, false, 404);
+      }
+      // SECURITY: staged deletion candidate only
       return {
         success: true,
         path,
         action: "deleted",
         staged: true,
-        note: "File removed from MCP session copy. Pass updated project files to the builder for authoritative commit.",
+        candidateDiff: { [path]: null },
+        note: "File deletion staged in MCP session. Must pass candidate validation before authoritative commit.",
       };
     }
 
     case "audit_code": {
-      const proj = resolveProjectExplicit(args.projectId);
-      const report = runCodeScan(proj.files);
+      const check = await verifyProjectOwnership(args.projectId, context!.userId!);
+      if (!check.authorized) {
+        return makeError(
+          check.status === 400 ? -32602 : check.status === 404 ? -32601 : -32003,
+          check.error || "Access denied",
+          undefined,
+          false,
+          check.status
+        );
+      }
+      const report = runCodeScan(check.project!.files);
       return { auditReport: report };
     }
 
@@ -407,6 +515,6 @@ async function executeMcpTool(name: string, args: Record<string, any>, context?:
     }
 
     default:
-      throw new Error(`Tool '${name}' not implemented.`);
+      return makeError(-32601, `Tool '${name}' not implemented.`, undefined, false, 404);
   }
 }

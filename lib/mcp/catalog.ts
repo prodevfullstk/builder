@@ -55,10 +55,10 @@ export const OPENDROK_MCP_TOOLS: MCPTool[] = [
       properties: {
         projectId: {
           type: "string",
-          description: "Target project ID (optional if using current workspace).",
+          description: "Target project ID.",
         },
       },
-      required: [],
+      required: ["projectId"],
     },
   },
   {
@@ -73,10 +73,10 @@ export const OPENDROK_MCP_TOOLS: MCPTool[] = [
         },
         projectId: {
           type: "string",
-          description: "Target project ID (optional).",
+          description: "Target project ID.",
         },
       },
-      required: ["path"],
+      required: ["projectId", "path"],
     },
   },
   {
@@ -95,10 +95,10 @@ export const OPENDROK_MCP_TOOLS: MCPTool[] = [
         },
         projectId: {
           type: "string",
-          description: "Target project ID (optional).",
+          description: "Target project ID.",
         },
       },
-      required: ["path", "content"],
+      required: ["projectId", "path", "content"],
     },
   },
   {
@@ -121,10 +121,10 @@ export const OPENDROK_MCP_TOOLS: MCPTool[] = [
         },
         projectId: {
           type: "string",
-          description: "Target project ID (optional).",
+          description: "Target project ID.",
         },
       },
-      required: ["path", "targetContent", "replacementContent"],
+      required: ["projectId", "path", "targetContent", "replacementContent"],
     },
   },
   {
@@ -143,10 +143,10 @@ export const OPENDROK_MCP_TOOLS: MCPTool[] = [
         },
         projectId: {
           type: "string",
-          description: "Target project ID (optional).",
+          description: "Target project ID.",
         },
       },
-      required: ["path", "confirm"],
+      required: ["projectId", "path", "confirm"],
     },
   },
 
@@ -162,7 +162,7 @@ export const OPENDROK_MCP_TOOLS: MCPTool[] = [
           description: "Target project ID to audit.",
         },
       },
-      required: [],
+      required: ["projectId"],
     },
   },
 
