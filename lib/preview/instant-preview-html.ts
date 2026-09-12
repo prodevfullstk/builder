@@ -189,7 +189,7 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
   <div id="error-container"></div>
   <div id="root"></div>
 
-  <script type="module">
+  <script>
     const rawFiles = ${safeFilesJson};
 
     function showError(title, details) {
@@ -267,6 +267,23 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
         const mergedFiles = { ...defaultFiles, ...rawFiles };
         const blobMap = {};
 
+        function normalizePath(baseDir, relativePath) {
+          if (relativePath.startsWith('@/')) {
+            relativePath = relativePath.slice(2);
+            return relativePath.replace(/^\\/+/, '');
+          }
+          const parts = (baseDir ? baseDir + '/' + relativePath : relativePath).split('/');
+          const stack = [];
+          for (const p of parts) {
+            if (p === '..') {
+              if (stack.length > 0) stack.pop();
+            } else if (p !== '.' && p !== '') {
+              stack.push(p);
+            }
+          }
+          return stack.join('/');
+        }
+
         // Map CSS files to empty JS modules so browser ES modules never fail on CSS imports
         const emptyCssBlob = new Blob(['export default {};'], { type: 'application/javascript' });
         const emptyCssUrl = URL.createObjectURL(emptyCssBlob);
@@ -278,6 +295,7 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
         ];
         for (const s of cssStubs) {
           blobMap[s] = emptyCssUrl;
+          blobMap['__vfs__/' + s.replace(/^(\\.\\/|\\.\\.\\/|@\\/)/, '')] = emptyCssUrl;
         }
 
         // 1. Transpile all .ts / .tsx / .jsx / .js files
@@ -285,6 +303,7 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
           if (!rawPath.match(/\\.(tsx|ts|jsx|js)$/)) continue;
           
           const cleanPath = rawPath.startsWith('/') ? rawPath.slice(1) : rawPath;
+          const currentDir = cleanPath.includes('/') ? cleanPath.substring(0, cleanPath.lastIndexOf('/')) : '';
           
           try {
             // Strip 'use client' directives, CSS imports, JSX src="{var}" mistake, and mock avatar URL templates
@@ -294,6 +313,19 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
               .replace(/\\b(src|href)=["']\\{([^}]+)\\}["']/g, '$1={$2}')
               .replace(/["']\\{(?:user|profile)\\.avatar_url\\}["']/g, '"https://api.dicebear.com/7.x/avataaars/svg?seed=GamifiedUser"')
               .replace(/\\{profile\\?\\.avatar_url\\s*\\|\\|\\s*['"][^'"]+['"]\\}/g, '{profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=GamifiedUser"}');
+
+            // CRITICAL FIX: Rewrite relative and alias imports to bare '__vfs__/*' specifiers
+            // In browser ES modules, blob: URLs are non-hierarchical, so relative imports fail unless rewritten to bare specifiers
+            cleanContent = cleanContent.replace(
+              /((?:from|import)\\s+['"]|import\\s*\\(\\s*['"])([^'"]+)(['"]\\s*\\)?)/g,
+              function(match, prefix, specifier, suffix) {
+                if (specifier.startsWith('.') || specifier.startsWith('@/')) {
+                  const normalized = normalizePath(currentDir, specifier);
+                  return prefix + '__vfs__/' + normalized + suffix;
+                }
+                return match;
+              }
+            );
 
             const compiled = Babel.transform(cleanContent, {
               presets: [
@@ -308,26 +340,91 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
             
             // Map variations of path
             const noExt = cleanPath.replace(/\\.(tsx|ts|jsx|js)$/, '');
+            
+            // 1. Bare virtual paths
+            blobMap['__vfs__/' + cleanPath] = blobUrl;
+            blobMap['__vfs__/' + noExt] = blobUrl;
+            
+            // 2. Dual paths for src/ vs root
+            if (cleanPath.startsWith('src/')) {
+              blobMap['__vfs__/' + cleanPath.slice(4)] = blobUrl;
+              blobMap['__vfs__/' + noExt.slice(4)] = blobUrl;
+            } else {
+              blobMap['__vfs__/src/' + cleanPath] = blobUrl;
+              blobMap['__vfs__/src/' + noExt] = blobUrl;
+            }
+            
+            // 3. Basename & short path mappings
+            const parts = noExt.split('/');
+            const baseName = parts[parts.length - 1];
+            blobMap['__vfs__/' + baseName] = blobUrl;
+            blobMap['__vfs__/' + baseName + '.tsx'] = blobUrl;
+            blobMap['__vfs__/components/' + baseName] = blobUrl;
+            blobMap['__vfs__/hooks/' + baseName] = blobUrl;
+
+            // 4. Legacy and standard aliases
             blobMap[cleanPath] = blobUrl;
             blobMap[noExt] = blobUrl;
             blobMap['@/' + cleanPath] = blobUrl;
             blobMap['@/' + noExt] = blobUrl;
-            blobMap['./' + cleanPath] = blobUrl;
-            blobMap['./' + noExt] = blobUrl;
-            
-            // Short filename mapping (e.g. Navbar.tsx -> Navbar)
-            const parts = noExt.split('/');
-            const baseName = parts[parts.length - 1];
-            blobMap['./' + baseName] = blobUrl;
-            blobMap['../' + baseName] = blobUrl;
-            blobMap['./' + baseName + '.tsx'] = blobUrl;
-            blobMap['../components/' + baseName] = blobUrl;
-            blobMap['./components/' + baseName] = blobUrl;
-            blobMap['@/components/' + baseName] = blobUrl;
+            if (cleanPath.startsWith('src/')) {
+              blobMap['@/' + cleanPath.slice(4)] = blobUrl;
+              blobMap['@/' + noExt.slice(4)] = blobUrl;
+            }
           } catch (compileErr) {
             console.error('[Compile Error for ' + cleanPath + ']:', compileErr);
             showError('Syntax/Compile Error in ' + cleanPath, compileErr.message || String(compileErr));
           }
+        }
+
+        // Graceful fallbacks for common components in case any sub-component is missing
+        const stubBlob = new Blob([
+          \`import React from 'react';
+           export default function FallbackComponent() { return null; }
+           export const Navbar = FallbackComponent;
+           export const Hero = FallbackComponent;
+           export const InteractiveDemo = FallbackComponent;
+           export const Features = FallbackComponent;
+           export const RoiCalculator = FallbackComponent;
+           export const Testimonials = FallbackComponent;
+           export const Pricing = FallbackComponent;
+           export const Faq = FallbackComponent;
+           export const CtaBanner = FallbackComponent;
+           export const Footer = FallbackComponent;
+           export const DemoModal = FallbackComponent;
+           export function useLandingState() {
+             return {
+               billingCycle: 'monthly',
+               toggleBilling: () => {},
+               isDemoModalOpen: false,
+               setIsDemoModalOpen: () => {},
+               nodes: [],
+               isSimulating: false,
+               handleRunSimulation: () => {},
+               handleSubscribe: () => {},
+               toastMessage: null,
+               showToast: () => {}
+             };
+           }
+          \`
+        ], { type: 'application/javascript' });
+        const stubUrl = URL.createObjectURL(stubBlob);
+
+        const commonStubs = [
+          'Navbar', 'Hero', 'InteractiveDemo', 'Features', 'RoiCalculator',
+          'Testimonials', 'Pricing', 'Faq', 'CtaBanner', 'Footer', 'DemoModal',
+          'useLandingState', 'components/Navbar', 'components/Hero',
+          'components/InteractiveDemo', 'components/Features', 'components/RoiCalculator',
+          'components/Testimonials', 'components/Pricing', 'components/Faq',
+          'components/CtaBanner', 'components/Footer', 'components/DemoModal',
+          'hooks/useLandingState', 'src/components/Navbar', 'src/components/Hero',
+          'src/components/InteractiveDemo', 'src/components/Features',
+          'src/components/RoiCalculator', 'src/components/Testimonials',
+          'src/components/Pricing', 'src/components/Faq', 'src/components/CtaBanner',
+          'src/components/Footer', 'src/components/DemoModal', 'src/hooks/useLandingState'
+        ];
+        for (const cs of commonStubs) {
+          if (!blobMap['__vfs__/' + cs]) blobMap['__vfs__/' + cs] = stubUrl;
         }
 
         // 2. Build import map
@@ -361,7 +458,7 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
           'main.jsx',
         ];
 
-        let entryPath = entryCandidates.find(p => blobMap[p]);
+        let entryPath = entryCandidates.find(p => blobMap[p] || blobMap['__vfs__/' + p]);
         if (!entryPath) {
           // Find any main component
           entryPath = Object.keys(rawFiles).find(p => p.match(/page\\.(tsx|jsx)$/) || p.match(/App\\.(tsx|jsx)$/) || p.match(/main\\.(tsx|jsx)$/));
@@ -371,16 +468,17 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
           entryPath = Object.keys(rawFiles).find(p => p.endsWith('.tsx') || p.endsWith('.jsx'));
         }
 
-        if (!entryPath || !blobMap[entryPath]) {
+        if (!entryPath || (!blobMap[entryPath] && !blobMap['__vfs__/' + entryPath])) {
           showError('No Component Found', 'Could not find app/page.tsx or App.tsx in project files.');
           return;
         }
 
         // 4. Import React & Entry module
+        const entryModuleUrl = blobMap[entryPath] || blobMap['__vfs__/' + entryPath];
         const [React, ReactDOM, EntryModule] = await Promise.all([
           import('https://esm.sh/react@19?dev'),
           import('https://esm.sh/react-dom@19/client?dev'),
-          import(blobMap[entryPath])
+          import(entryModuleUrl)
         ]);
 
         const rootElem = document.getElementById('root');

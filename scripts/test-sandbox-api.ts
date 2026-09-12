@@ -34,7 +34,17 @@ async function testApi() {
     framework: 'nextjs',
     files: {
       'index.html': `<!DOCTYPE html><html><head><title>Vite App</title></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>`,
-      'src/App.tsx': `import React from 'react'; export default function App() { return <h1>🚀 Live Vite React App in Sandbox</h1>; }`,
+      'src/App.tsx': `import React from 'react';
+import { Navbar } from './components/Navbar';
+import { Hero } from './components/Hero';
+import { useLandingState } from './hooks/useLandingState';
+export default function App() {
+  const { toastMessage } = useLandingState();
+  return <div><h1>🚀 Opendork Live App</h1><Navbar /><Hero /><p>{toastMessage}</p></div>;
+}`,
+      'src/components/Navbar.tsx': `import React from 'react'; export function Navbar() { return <nav>Navbar Component</nav>; }`,
+      'src/components/Hero.tsx': `import React from 'react'; export function Hero() { return <section>Hero Component</section>; }`,
+      'src/hooks/useLandingState.ts': `export function useLandingState() { return { toastMessage: 'Landing State Active' }; }`,
       'src/main.tsx': `import React from 'react'; import ReactDOM from 'react-dom/client'; import App from './App'; ReactDOM.createRoot(document.getElementById('root')).render(<App />);`,
     },
   };
