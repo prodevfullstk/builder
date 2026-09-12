@@ -41,8 +41,8 @@ export async function POST(req: NextRequest) {
     const hasIndexHtml = Object.keys(files).some((f) => f.toLowerCase() === 'index.html' || f.endsWith('/index.html'));
     const hasPackageJson = Object.keys(files).some((f) => f.toLowerCase() === 'package.json');
 
-    // If neither index.html nor package.json is present, compile in-browser HTML fallback
-    if (!hasIndexHtml && !hasPackageJson && Object.keys(files).length > 0) {
+    // If no static index.html is in project files, compile and provide preview bundle HTML for /vercel/app/index.html
+    if (!hasIndexHtml && Object.keys(files).length > 0) {
       const generatedHtml = generateInstantPreviewHtml(files);
       filesToWrite.push({
         path: '/vercel/app/index.html',

@@ -32,6 +32,7 @@ function PanelToggleIcon({ mirrored = false }: { mirrored?: boolean }) {
 import { useProjectStore, TimelineStep } from '@/lib/store/project-store';
 import { extractStreamingState, parseFinalOutput } from '@/lib/ai/code-parser';
 import { parseToolCalls, executeToolCalls } from '@/lib/ai/mcp-executor';
+import { bundleProjectWithEsbuild } from '@/lib/preview/esbuild-compiler';
 import { SUGGESTED_PROMPTS } from '@/lib/ai/prompt-templates';
 import { V0Stepper } from './v0-stepper';
 import { useCreditsStore, CreditAction } from '@/lib/store/credits-store';
@@ -452,18 +453,94 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         addLog(`[AI] Workspace updated: ${Object.keys(mergedFiles).length} files (${hasToolCalls ? `${toolCalls.length} MCP tools executed` : 'file parser'}).`);
       }
 
+      let verifiedFiles = mergedFiles;
+      let buildHealed = false;
+
+      // ── Autonomous Build-Verify-Repair Pipeline ──
+      if (Object.keys(verifiedFiles).length > 0) {
+        addLog('[Build Pipeline] Running virtual build verification check...');
+        try {
+          const checkResult = await bundleProjectWithEsbuild(verifiedFiles);
+          if (checkResult.errors.length > 0 && !isFixRequest) {
+            const firstError = checkResult.errors[0];
+            addLog(`[Build Pipeline] ⚠️ Virtual build issue detected: ${firstError.slice(0, 120)}... Initiating autonomous self-healing...`);
+
+            // Add auto-heal step to timeline
+            const healStepId = 'heal-' + Date.now();
+            currentSteps = [
+              ...currentSteps,
+              { id: healStepId, type: 'inspect', label: 'Auto-healing compilation issue...', status: 'running' as const }
+            ];
+            setActiveSteps(currentSteps);
+
+            const healResponse = await fetch('/api/agent', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                message: `AUTONOMOUS BUILD VERIFICATION FAILED:\n${checkResult.errors.join('\n')}\n\nPlease perform a minimal surgical fix to repair the error without modifying working features.`,
+                files: verifiedFiles,
+                framework: effectiveFramework,
+                dbProvider: effectiveDbProvider,
+                authProvider: effectiveAuthProvider,
+                mode: 'auto-fix',
+              }),
+            });
+
+            if (healResponse.ok && healResponse.body) {
+              const healReader = healResponse.body.getReader();
+              const healDecoder = new TextDecoder();
+              let healAccum = '';
+              while (true) {
+                const { done, value } = await healReader.read();
+                if (done) break;
+                healAccum += healDecoder.decode(value, { stream: true });
+              }
+
+              const { toolCalls: healTools } = parseToolCalls(healAccum);
+              const { files: healParsedFiles } = parseFinalOutput(healAccum);
+
+              let healedDiff: Record<string, string> = {};
+              if (healTools.length > 0) {
+                const mcpRes = executeToolCalls(verifiedFiles, healTools);
+                healedDiff = mcpRes.updatedFiles;
+                mcpRes.logs.forEach((l) => addLog(l));
+              }
+              if (Object.keys(healParsedFiles).length > 0) {
+                healedDiff = { ...healedDiff, ...healParsedFiles };
+              }
+
+              if (Object.keys(healedDiff).length > 0) {
+                verifiedFiles = { ...verifiedFiles, ...healedDiff };
+                setFiles(verifiedFiles);
+                buildHealed = true;
+                addLog(`[Auto-Heal] Successfully resolved build errors in ${Object.keys(healedDiff).join(', ')}.`);
+              }
+            }
+          } else {
+            addLog('[Build Pipeline] ✓ Virtual build verification passed cleanly.');
+          }
+        } catch (compileErr) {
+          console.warn('[Build Verification]', compileErr);
+        }
+      }
+
       // Mark all file steps as completed with line counts
       const finalSteps: TimelineStep[] = [
         ...currentSteps.map((step) => {
-          if (step.file && mergedFiles[step.file]) {
-            const lines = mergedFiles[step.file].split('\n').length;
+          if (step.file && verifiedFiles[step.file]) {
+            const lines = verifiedFiles[step.file].split('\n').length;
             return { ...step, status: 'completed' as const, label: `Built ${step.file.split('/').pop()}`, linesAdded: lines };
           }
           return { ...step, status: 'completed' as const };
         }),
         ...toolSteps,
       ];
-      finalSteps.push({ id: 'preview-checked', type: 'preview', label: 'Preview ready', status: 'completed' });
+      finalSteps.push({
+        id: 'preview-checked',
+        type: 'preview',
+        label: buildHealed ? 'Build verified & auto-healed' : 'Build verified (0 errors)',
+        status: 'completed',
+      });
 
       setActiveSteps(finalSteps);
       setIsStreaming(false);

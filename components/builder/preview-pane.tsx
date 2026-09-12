@@ -60,7 +60,7 @@ export function PreviewPane() {
   const [previewKey, setPreviewKey] = useState(1);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [backendUrl, setBackendUrl] = useState<string | null>(null);
-  const [engine, setEngine] = useState<'vercel' | 'instant' | 'nodebox'>('instant');
+  const [engine, setEngine] = useState<'vercel' | 'instant' | 'nodebox'>('vercel');
   const [fallbackWarning, setFallbackWarning] = useState<string[] | null>(null);
   const [isFixing, setIsFixing] = useState(false);
 
@@ -387,8 +387,9 @@ export function PreviewPane() {
                 }
               }}
               onError={(err: string) => {
-                addLog(`[Vercel Sandbox Error] ${err}`);
+                addLog(`[Vercel Sandbox Error] ${err} — falling back to Instant Preview.`);
                 setRuntimeError(err);
+                setEngine('instant');
               }}
               onReady={(url: string) => {
                 setPreviewUrl(url);
