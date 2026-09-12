@@ -266,7 +266,6 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
 
         const mergedFiles = { ...defaultFiles, ...rawFiles };
         const blobMap = {};
-        const usedFallbacks = [];
 
         // Map CSS files to empty JS modules so browser ES modules never fail on CSS imports
         const emptyCssBlob = new Blob(['export default {};'], { type: 'application/javascript' });
@@ -283,17 +282,18 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
 
         // 1. Transpile all .ts / .tsx / .jsx / .js files
         for (const [rawPath, content] of Object.entries(mergedFiles)) {
-          if (!rawPath.match(/\.(tsx|ts|jsx|js)$/)) continue;
+          if (!rawPath.match(/\\.(tsx|ts|jsx|js)$/)) continue;
           
-          const cleanPath = rawPath.replace(/^\/+/, '');
+          const cleanPath = rawPath.startsWith('/') ? rawPath.slice(1) : rawPath;
           
+          try {
             // Strip 'use client' directives, CSS imports, JSX src="{var}" mistake, and mock avatar URL templates
             let cleanContent = content
-              .replace(/^['"]use client['"];?\s*/gm, '')
-              .replace(/import\s+['"][^'"]+\.css['"];?\s*/g, '')
-              .replace(/\b(src|href)=["']\{([^}]+)\}["']/g, '$1={$2}')
-              .replace(/["']\{(?:user|profile)\.avatar_url\}["']/g, '"https://api.dicebear.com/7.x/avataaars/svg?seed=GamifiedUser"')
-              .replace(/\{profile\?\.avatar_url\s*\|\|\s*['"][^'"]+['"]\}/g, '{profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=GamifiedUser"}');
+              .replace(/^['"]use client['"];?\\s*/gm, '')
+              .replace(/import\\s+['"][^'"]+\\.css['"];?\\s*/g, '')
+              .replace(/\\b(src|href)=["']\\{([^}]+)\\}["']/g, '$1={$2}')
+              .replace(/["']\\{(?:user|profile)\\.avatar_url\\}["']/g, '"https://api.dicebear.com/7.x/avataaars/svg?seed=GamifiedUser"')
+              .replace(/\\{profile\\?\\.avatar_url\\s*\\|\\|\\s*['"][^'"]+['"]\\}/g, '{profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=GamifiedUser"}');
 
             const compiled = Babel.transform(cleanContent, {
               presets: [
@@ -307,7 +307,7 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
             const blobUrl = URL.createObjectURL(blob);
             
             // Map variations of path
-            const noExt = cleanPath.replace(/\.(tsx|ts|jsx|js)$/, '');
+            const noExt = cleanPath.replace(/\\.(tsx|ts|jsx|js)$/, '');
             blobMap[cleanPath] = blobUrl;
             blobMap[noExt] = blobUrl;
             blobMap['@/' + cleanPath] = blobUrl;
@@ -349,18 +349,22 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
           'app/page.tsx',
           'app/page.jsx',
           'app/page.js',
-          'pages/index.tsx',
-          'pages/index.jsx',
           'src/App.tsx',
           'src/App.jsx',
           'App.tsx',
-          'App.jsx'
+          'App.jsx',
+          'pages/index.tsx',
+          'pages/index.jsx',
+          'src/main.tsx',
+          'src/main.jsx',
+          'main.tsx',
+          'main.jsx',
         ];
 
         let entryPath = entryCandidates.find(p => blobMap[p]);
         if (!entryPath) {
           // Find any main component
-          entryPath = Object.keys(rawFiles).find(p => p.match(/page\\.(tsx|jsx)$/) || p.match(/App\\.(tsx|jsx)$/));
+          entryPath = Object.keys(rawFiles).find(p => p.match(/page\\.(tsx|jsx)$/) || p.match(/App\\.(tsx|jsx)$/) || p.match(/main\\.(tsx|jsx)$/));
         }
         if (!entryPath) {
           // Fallback to first tsx/jsx file
@@ -379,16 +383,20 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
           import(blobMap[entryPath])
         ]);
 
+        const rootElem = document.getElementById('root');
         const Component = EntryModule.default || EntryModule[Object.keys(EntryModule)[0]];
         if (!Component) {
-          showError('Export Missing', entryPath + ' does not have a default export.');
-          return;
+          if (rootElem && rootElem.children.length > 0) {
+            // Already mounted by entry module itself (e.g. main.tsx mounting createRoot)
+          } else {
+            showError('Export Missing', entryPath + ' does not have a default export.');
+            return;
+          }
+        } else {
+          // 5. Render App
+          const root = ReactDOM.createRoot(rootElem);
+          root.render(React.createElement(Component));
         }
-
-        // 5. Render App
-        const rootElem = document.getElementById('root');
-        const root = ReactDOM.createRoot(rootElem);
-        root.render(React.createElement(Component));
 
         // Hide loading spinner
         const spinner = document.getElementById('loading-spinner');

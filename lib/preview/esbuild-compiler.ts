@@ -154,6 +154,8 @@ export async function bundleProjectWithEsbuild(
     'app/page.tsx', 'app/page.jsx',
     'src/App.tsx', 'src/App.jsx',
     'App.tsx', 'App.jsx',
+    'pages/index.tsx', 'pages/index.jsx',
+    'src/main.tsx', 'main.tsx',
   ];
 
   let entryFile = candidates.find((c) => files[c] || files['/' + c]);

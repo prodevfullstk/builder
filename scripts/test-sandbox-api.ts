@@ -33,7 +33,9 @@ async function testApi() {
     projectId: 'test-audit-p1',
     framework: 'nextjs',
     files: {
-      'index.html': `<!DOCTYPE html><html><head><title>Opendork Audit</title></head><body style="background:#09090b;color:#f4f4f5;font-family:sans-serif;padding:2rem;"><h1>🚀 Vercel Sandbox Live Audit</h1><p>Verified from Next.js API Route handler.</p></body></html>`,
+      'index.html': `<!DOCTYPE html><html><head><title>Vite App</title></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>`,
+      'src/App.tsx': `import React from 'react'; export default function App() { return <h1>🚀 Live Vite React App in Sandbox</h1>; }`,
+      'src/main.tsx': `import React from 'react'; import ReactDOM from 'react-dom/client'; import App from './App'; ReactDOM.createRoot(document.getElementById('root')).render(<App />);`,
     },
   };
 

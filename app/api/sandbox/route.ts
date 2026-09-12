@@ -39,10 +39,15 @@ export async function POST(req: NextRequest) {
     // 2. Prepare files to write inside the microVM
     const filesToWrite: { path: string; content: string }[] = [];
     const hasIndexHtml = Object.keys(files).some((f) => f.toLowerCase() === 'index.html' || f.endsWith('/index.html'));
-    const hasPackageJson = Object.keys(files).some((f) => f.toLowerCase() === 'package.json');
+    const hasTsxOrJsx = Object.keys(files).some((f) => /\.(tsx|jsx|ts)$/i.test(f));
+    const rawIndexHtml = String(Object.entries(files).find(([f]) => f.toLowerCase() === 'index.html' || f.endsWith('/index.html'))?.[1] || '');
+    const indexHasTsx = /<script[^>]*src=["'][^"']*\.(tsx|jsx|ts)["']/i.test(rawIndexHtml);
 
-    // If no static index.html is in project files, compile and provide preview bundle HTML for /vercel/app/index.html
-    if (!hasIndexHtml && Object.keys(files).length > 0) {
+    // If project contains TSX/JSX, or index.html references TSX/JSX, or no index.html is present:
+    // compile and provide the preview bundle HTML for /vercel/app/index.html
+    const shouldCompileIndex = hasTsxOrJsx || indexHasTsx || !hasIndexHtml;
+
+    if (shouldCompileIndex && Object.keys(files).length > 0) {
       const generatedHtml = generateInstantPreviewHtml(files);
       filesToWrite.push({
         path: '/vercel/app/index.html',
@@ -54,6 +59,14 @@ export async function POST(req: NextRequest) {
     for (const [filePath, content] of Object.entries(files)) {
       if (typeof content !== 'string') continue;
       const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+      if (shouldCompileIndex && (cleanPath.toLowerCase() === 'index.html' || cleanPath.endsWith('/index.html'))) {
+        // Keep original user index as index.source.html so we don't overwrite the compiled preview bundle
+        filesToWrite.push({
+          path: `/vercel/app/index.source.html`,
+          content,
+        });
+        continue;
+      }
       filesToWrite.push({
         path: `/vercel/app/${cleanPath}`,
         content,
@@ -70,6 +83,9 @@ const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
+  '.ts': 'text/javascript; charset=utf-8',
+  '.tsx': 'text/javascript; charset=utf-8',
+  '.jsx': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
@@ -94,23 +110,45 @@ const server = http.createServer((req, res) => {
   }
 
   let reqPath = req.url.split('?')[0];
+  if (reqPath === '/favicon.ico') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   if (reqPath === '/') reqPath = '/index.html';
-  const filePath = path.join('/vercel/app', reqPath);
+  let filePath = path.join('/vercel/app', reqPath);
+
+  // Search in /src or /public if file not found at root path
+  if (!fs.existsSync(filePath)) {
+    const srcCandidate = path.join('/vercel/app/src', reqPath);
+    if (fs.existsSync(srcCandidate)) {
+      filePath = srcCandidate;
+    } else {
+      const publicCandidate = path.join('/vercel/app/public', reqPath);
+      if (fs.existsSync(publicCandidate)) {
+        filePath = publicCandidate;
+      }
+    }
+  }
 
   if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
     const ext = path.extname(filePath).toLowerCase();
     res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'text/plain' });
     res.end(fs.readFileSync(filePath));
   } else {
-    // Single Page Application fallback
-    const indexPath = '/vercel/app/index.html';
-    if (fs.existsSync(indexPath)) {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(fs.readFileSync(indexPath));
-    } else {
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('Not Found');
+    // Single Page Application fallback only for non-asset navigation routes
+    const isAsset = /\\.(js|mjs|ts|tsx|jsx|css|json|png|jpg|jpeg|svg|ico|woff2|map)$/i.test(reqPath);
+    if (!isAsset) {
+      const indexPath = '/vercel/app/index.html';
+      if (fs.existsSync(indexPath)) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(fs.readFileSync(indexPath));
+        return;
+      }
     }
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
   }
 });
 
