@@ -252,7 +252,7 @@ export default function PricingPage() {
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-300">
                 <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
                 <span className="font-bold text-white">{credits}</span>
-                <span className="text-zinc-500 text-[10px]">pts</span>
+                <span className="text-zinc-500 text-[10px]">Credits</span>
               </div>
               <UserMenu />
               <Link
@@ -412,7 +412,7 @@ export default function PricingPage() {
               </div>
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-xs font-mono text-zinc-400">
                 <span>Free Daily Refresh:</span>
-                <span className="text-amber-400 font-bold">+15 pts / 24h</span>
+                <span className="text-amber-400 font-bold">+15 Credits / 24h</span>
               </div>
             </div>
 
@@ -420,7 +420,7 @@ export default function PricingPage() {
               <div className="p-4 rounded-xl bg-zinc-950/80 border border-zinc-800 text-center space-y-1">
                 <span className="text-[11px] text-zinc-400 block font-medium">New Fullstack Project</span>
                 <span className="text-2xl font-extrabold text-white font-mono block">
-                  {ACTION_COSTS.NEW_PROJECT_BUILD} pts
+                  {ACTION_COSTS.NEW_PROJECT_BUILD} Credits
                 </span>
                 <span className="text-[10px] text-zinc-500 block">5-8 complete files + types</span>
               </div>
@@ -428,7 +428,7 @@ export default function PricingPage() {
               <div className="p-4 rounded-xl bg-zinc-950/80 border border-zinc-800 text-center space-y-1">
                 <span className="text-[11px] text-zinc-400 block font-medium">Feature & File Edit</span>
                 <span className="text-2xl font-extrabold text-white font-mono block">
-                  {ACTION_COSTS.FEATURE_EDIT} pts
+                  {ACTION_COSTS.FEATURE_EDIT} Credits
                 </span>
                 <span className="text-[10px] text-zinc-500 block">Surgical code modifications</span>
               </div>
@@ -436,7 +436,7 @@ export default function PricingPage() {
               <div className="p-4 rounded-xl bg-zinc-950/80 border border-zinc-800 text-center space-y-1">
                 <span className="text-[11px] text-zinc-400 block font-medium">Auto-Fix & Visual Fix</span>
                 <span className="text-2xl font-extrabold text-white font-mono block">
-                  {ACTION_COSTS.AUTO_FIX} pts
+                  {ACTION_COSTS.AUTO_FIX} Credits
                 </span>
                 <span className="text-[10px] text-zinc-500 block">Screenshot or runtime repairs</span>
               </div>
@@ -444,7 +444,7 @@ export default function PricingPage() {
               <div className="p-4 rounded-xl bg-zinc-950/80 border border-zinc-800 text-center space-y-1">
                 <span className="text-[11px] text-zinc-400 block font-medium">Chat & Consultation</span>
                 <span className="text-2xl font-extrabold text-white font-mono block">
-                  {ACTION_COSTS.CHAT_PLAN} pt
+                  {ACTION_COSTS.CHAT_PLAN} Credit
                 </span>
                 <span className="text-[10px] text-zinc-500 block">Requirements & questions</span>
               </div>
@@ -459,7 +459,7 @@ export default function PricingPage() {
                 <span>Pay-As-You-Go Credit Top-Ups</span>
               </h2>
               <p className="text-xs text-zinc-400">
-                Need more points without a monthly subscription? Refill your balance anytime.
+                Need more credits without a monthly subscription? Refill your balance anytime.
                 Top-up credits never expire.
               </p>
             </div>
@@ -485,7 +485,7 @@ export default function PricingPage() {
                       <span className="text-3xl font-extrabold text-white font-mono">
                         +{pack.credits}
                       </span>
-                      <span className="text-xs text-zinc-400 font-mono">pts</span>
+                      <span className="text-xs text-zinc-400 font-mono">Credits</span>
                     </div>
                     <p className="text-xs text-zinc-400 leading-relaxed">
                       {pack.description}
@@ -523,9 +523,9 @@ export default function PricingPage() {
                 <tbody className="divide-y divide-zinc-800/60 font-sans">
                   <tr>
                     <td className="py-3 px-4 font-medium text-white">Monthly AI Credits</td>
-                    <td className="py-3 px-4 text-zinc-400 font-mono">100 + 15/day</td>
-                    <td className="py-3 px-4 text-blue-300 font-mono font-bold">1,500 pts</td>
-                    <td className="py-3 px-4 text-purple-300 font-mono font-bold">5,000 pts</td>
+                    <td className="py-3 px-4 text-zinc-400 font-mono">100 + 15/day Credits</td>
+                    <td className="py-3 px-4 text-blue-300 font-mono font-bold">1,500 Credits</td>
+                    <td className="py-3 px-4 text-purple-300 font-mono font-bold">5,000 Credits</td>
                   </tr>
                   <tr>
                     <td className="py-3 px-4 font-medium text-white">Inference Engine</td>

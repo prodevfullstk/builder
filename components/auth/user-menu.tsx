@@ -94,7 +94,7 @@ export function UserMenu() {
               <Zap className="w-3.5 h-3.5 text-amber-400" />
               Credits & Usage
             </span>
-            <span className="font-mono text-emerald-400 font-bold">{credits} pts</span>
+            <span className="font-mono text-emerald-400 font-bold">{credits} Credits</span>
           </button>
 
           {/* Pricing & Upgrade link */}

@@ -61,7 +61,7 @@ export function CreditsModal() {
                 </span>
               </h2>
               <p className="text-xs text-zinc-400">
-                Points fuel fullstack code generation, edits, and automated repairs
+                Credits fuel fullstack code generation, edits, and automated repairs
               </p>
             </div>
           </div>
@@ -86,7 +86,7 @@ export function CreditsModal() {
                 <span className="text-3xl font-extrabold text-white font-mono">
                   {credits}
                 </span>
-                <span className="text-xs text-zinc-500 font-mono">/ {maxCredits} pts</span>
+                <span className="text-xs text-zinc-500 font-mono">/ {maxCredits} Credits</span>
               </div>
               <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
                 <div
@@ -102,10 +102,10 @@ export function CreditsModal() {
                 <span className="text-xs text-amber-400 font-semibold flex items-center gap-1">
                   <Gift className="w-3.5 h-3.5" /> Daily Reward
                 </span>
-                <span className="text-[10px] text-zinc-500 font-mono">+15 pts</span>
+                <span className="text-[10px] text-zinc-500 font-mono">+15 Credits</span>
               </div>
               <p className="text-xs text-zinc-400 my-1">
-                Claim your free points every 24 hours to keep building.
+                Claim your free credits every 24 hours to keep building.
               </p>
               <button
                 type="button"
@@ -123,11 +123,11 @@ export function CreditsModal() {
                   </>
                 ) : claimSuccess ? (
                   <>
-                    <Check className="w-3.5 h-3.5" /> +15 Points Added!
+                    <Check className="w-3.5 h-3.5" /> +15 Credits Added!
                   </>
                 ) : (
                   <>
-                    <Gift className="w-3.5 h-3.5" /> Claim +15 Bonus
+                    <Gift className="w-3.5 h-3.5" /> Claim +15 Credits
                   </>
                 )}
               </button>
@@ -143,19 +143,19 @@ export function CreditsModal() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div className="p-2.5 bg-zinc-900/70 border border-zinc-800/80 rounded-lg text-center">
                 <span className="text-[11px] text-zinc-400 block mb-1">New Full Project</span>
-                <span className="text-sm font-bold text-white font-mono">{ACTION_COSTS.NEW_PROJECT_BUILD} pts</span>
+                <span className="text-sm font-bold text-white font-mono">{ACTION_COSTS.NEW_PROJECT_BUILD} Credits</span>
               </div>
               <div className="p-2.5 bg-zinc-900/70 border border-zinc-800/80 rounded-lg text-center">
                 <span className="text-[11px] text-zinc-400 block mb-1">Feature / File Edit</span>
-                <span className="text-sm font-bold text-white font-mono">{ACTION_COSTS.FEATURE_EDIT} pts</span>
+                <span className="text-sm font-bold text-white font-mono">{ACTION_COSTS.FEATURE_EDIT} Credits</span>
               </div>
               <div className="p-2.5 bg-zinc-900/70 border border-zinc-800/80 rounded-lg text-center">
                 <span className="text-[11px] text-zinc-400 block mb-1">Auto-Fix Error</span>
-                <span className="text-sm font-bold text-white font-mono">{ACTION_COSTS.AUTO_FIX} pts</span>
+                <span className="text-sm font-bold text-white font-mono">{ACTION_COSTS.AUTO_FIX} Credits</span>
               </div>
               <div className="p-2.5 bg-zinc-900/70 border border-zinc-800/80 rounded-lg text-center">
                 <span className="text-[11px] text-zinc-400 block mb-1">Chat / Plan</span>
-                <span className="text-sm font-bold text-white font-mono">{ACTION_COSTS.CHAT_PLAN} pt</span>
+                <span className="text-sm font-bold text-white font-mono">{ACTION_COSTS.CHAT_PLAN} Credit</span>
               </div>
             </div>
           </div>
@@ -164,7 +164,7 @@ export function CreditsModal() {
           <div>
             <h3 className="text-xs uppercase font-semibold text-zinc-400 mb-2.5 flex items-center gap-1.5">
               <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Top-Up Points & Pro Packs</span>
+              <span>Top-Up Credits & Pro Packs</span>
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Creator Pack */}
@@ -173,14 +173,14 @@ export function CreditsModal() {
                   <div className="flex items-center gap-1.5">
                     <span className="font-semibold text-white text-xs">Starter Top-Up</span>
                     <span className="text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1.5 rounded">
-                      +250 pts
+                      +250 Credits
                     </span>
                   </div>
                   <span className="text-[11px] text-zinc-500 font-mono">$5 one-time</span>
                 </div>
                 <button
                   type="button"
-                  onClick={() => handleSimulatePurchase(250, 'Starter 250 Points')}
+                  onClick={() => handleSimulatePurchase(250, 'Starter 250 Credits')}
                   className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-white cursor-pointer transition-colors"
                 >
                   Top Up
@@ -193,14 +193,14 @@ export function CreditsModal() {
                   <div className="flex items-center gap-1.5">
                     <span className="font-semibold text-white text-xs">Pro Unlimited</span>
                     <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 rounded">
-                      +1000 pts
+                      +1,000 Credits
                     </span>
                   </div>
                   <span className="text-[11px] text-zinc-400 font-mono">$15 / mo</span>
                 </div>
                 <button
                   type="button"
-                  onClick={() => handleSimulatePurchase(1000, 'Pro 1,000 Points')}
+                  onClick={() => handleSimulatePurchase(1000, 'Pro 1,000 Credits')}
                   className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white cursor-pointer transition-all shadow-sm"
                 >
                   Upgrade
@@ -227,7 +227,7 @@ export function CreditsModal() {
                       tx.amount > 0 ? 'text-emerald-400' : 'text-zinc-300'
                     }`}
                   >
-                    {tx.amount > 0 ? `+${tx.amount}` : tx.amount} pts
+                    {tx.amount > 0 ? `+${tx.amount}` : tx.amount} Credits
                   </span>
                 </div>
               ))}

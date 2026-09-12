@@ -41,7 +41,7 @@ export function CreditsBadge({ className = '' }: { className?: string }) {
     >
       <Zap className={`w-3.5 h-3.5 ${isLow ? 'animate-bounce text-red-400' : 'text-emerald-400'}`} />
       <span>{credits}</span>
-      <span className="opacity-60 text-[10px]">/ {maxCredits} pts</span>
+      <span className="opacity-60 text-[10px]">/ {maxCredits} Credits</span>
     </button>
   );
 }
