@@ -792,16 +792,6 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
             </button>
           </div>
         </form>
-        
-        {/* Helper text with icon */}
-        <div className="flex items-center justify-center gap-2 mt-2.5">
-          <div className="flex items-center gap-1.5 text-[10px] text-zinc-500">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            <span className="font-medium">AI automatically chooses optimal framework & components</span>
-          </div>
-        </div>
         </div>
       )}
     </div>
