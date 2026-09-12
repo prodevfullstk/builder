@@ -17,6 +17,7 @@ import {
   Sparkles,
   AlertTriangle,
   Loader2,
+  Cloud,
 } from 'lucide-react';
 import { useProjectStore } from '@/lib/store/project-store';
 import { InstantPreview } from '@/components/preview/instant-preview';
@@ -24,7 +25,12 @@ import { detectBackendEntry } from '@/lib/sandbox/detect-backend';
 import { parseToolCalls, executeToolCalls } from '@/lib/ai/mcp-executor';
 import { parseFinalOutput } from '@/lib/ai/code-parser';
 
-// Dynamically import NodeboxPreview with ssr: false
+// Dynamically import sandbox engines with ssr: false
+const VercelPreview = dynamic(
+  () => import('@/components/sandbox/vercel-preview').then((m) => m.VercelPreview),
+  { ssr: false }
+);
+
 const NodeboxPreview = dynamic(
   () => import('@/components/sandbox/nodebox-preview').then((m) => m.NodeboxPreview),
   { ssr: false }
@@ -32,6 +38,7 @@ const NodeboxPreview = dynamic(
 
 export function PreviewPane() {
   const {
+    projectId,
     files,
     setFiles,
     framework,
@@ -53,7 +60,7 @@ export function PreviewPane() {
   const [previewKey, setPreviewKey] = useState(1);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [backendUrl, setBackendUrl] = useState<string | null>(null);
-  const [engine, setEngine] = useState<'instant' | 'nodebox'>('instant');
+  const [engine, setEngine] = useState<'vercel' | 'instant' | 'nodebox'>('instant');
   const [fallbackWarning, setFallbackWarning] = useState<string[] | null>(null);
   const [isFixing, setIsFixing] = useState(false);
 
@@ -203,8 +210,20 @@ export function PreviewPane() {
             </button>
           </div>
 
-          {/* Dual Engine Switcher */}
+          {/* Triple Engine Switcher */}
           <div className="flex items-center gap-0.5 bg-zinc-950 p-0.5 rounded-md border border-zinc-800 text-[11px]">
+            <button
+              onClick={() => setEngine('vercel')}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded transition-colors ${
+                engine === 'vercel'
+                  ? 'bg-blue-600 text-white font-medium shadow-xs'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              title="Vercel Sandbox: Cloud MicroVM runtime (Primary)"
+            >
+              <Cloud className="w-3 h-3 text-sky-300" />
+              <span>Vercel Sandbox</span>
+            </button>
             <button
               onClick={() => setEngine('instant')}
               className={`flex items-center gap-1 px-2 py-0.5 rounded transition-colors ${
@@ -235,7 +254,13 @@ export function PreviewPane() {
         {/* Center: URL Bar Mockup */}
         <div className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-zinc-950 border border-zinc-800/80 text-[11px] text-zinc-400 font-mono">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
-          <span>{engine === 'instant' ? 'preview.local' : 'localhost:3000'}</span>
+          <span className="truncate max-w-[220px]">
+            {engine === 'vercel'
+              ? previewUrl ? previewUrl.replace(/^https?:\/\//, '') : 'sandbox.vercel.run'
+              : engine === 'instant'
+              ? 'preview.local'
+              : 'localhost:3000'}
+          </span>
           {hasBackend && engine === 'instant' && (
             <span
               className="ml-1 flex items-center gap-0.5 text-emerald-400/80"
@@ -249,7 +274,7 @@ export function PreviewPane() {
 
         {/* Right: Actions */}
         <div className="flex items-center gap-1">
-          {engine === 'nodebox' && (
+          {(engine === 'vercel' || engine === 'nodebox') && (
             <button
               onClick={() => setShowLogs(!showLogs)}
               className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] transition-colors ${
@@ -273,7 +298,7 @@ export function PreviewPane() {
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
 
-          {previewUrl && engine === 'nodebox' && (
+          {previewUrl && (engine === 'vercel' || engine === 'nodebox') && (
             <button
               onClick={handleOpenExternal}
               className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
@@ -345,9 +370,35 @@ export function PreviewPane() {
           style={{ width: getViewportWidth() }}
           className="h-full bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl overflow-hidden transition-all duration-300 flex flex-col"
         >
-          {engine === 'instant' ? (
+          {engine === 'vercel' ? (
+            <VercelPreview
+              key={`vercel-${previewKey}`}
+              files={files}
+              projectId={projectId || 'default'}
+              framework={framework}
+              refreshNonce={previewKey}
+              onStatusChange={(newStatus: string) => {
+                if (newStatus === 'ready') {
+                  setStatus('ready', 'Vercel Sandbox ready');
+                } else if (newStatus === 'error') {
+                  setStatus('error', 'Runtime error occurred');
+                } else {
+                  setStatus('starting', `${newStatus}...`);
+                }
+              }}
+              onError={(err: string) => {
+                addLog(`[Vercel Sandbox Error] ${err}`);
+                setRuntimeError(err);
+              }}
+              onReady={(url: string) => {
+                setPreviewUrl(url);
+                addLog(`[Vercel Sandbox Ready] Live at ${url}`);
+              }}
+              onLog={(msg: string) => addLog(msg)}
+            />
+          ) : engine === 'instant' ? (
             <InstantPreview
-              key={previewKey}
+              key={`instant-${previewKey}`}
               files={files}
               refreshNonce={previewKey}
               backendUrl={backendUrl}
@@ -361,7 +412,7 @@ export function PreviewPane() {
             />
           ) : (
             <NodeboxPreview
-              key={previewKey}
+              key={`nodebox-${previewKey}`}
               files={files}
               framework={framework}
               onStatusChange={(newStatus: string) => {

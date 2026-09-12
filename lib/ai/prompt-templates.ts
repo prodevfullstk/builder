@@ -139,31 +139,23 @@ When the user attaches an image, screenshot, design wireframe, or UI mockup:
 
 ### OUTPUT FORMAT — MANDATORY:
 
-Step 1: Stream each file as a markdown code block for live preview:
+Output EVERY project file sequentially as a complete, fully-implemented markdown code block with the exact filename attribute:
 \`\`\`tsx filename=app/page.tsx
 // complete file content
 \`\`\`
+\`\`\`tsx filename=components/Navbar.tsx
+// complete file content
+\`\`\`
+\`\`\`json filename=package.json
+// dependencies
+\`\`\`
 
-Step 2: After ALL files, output a structured JSON block for reliable parsing:
-
-<FILES>
-{"files":[
-  {"path":"app/page.tsx","content":"complete content here"},
-  {"path":"components/Navbar.tsx","content":"complete content here"}
-]}
-</FILES>
-
-Step 3: After the FILES block, write 2-3 sentences explaining what you built, what features it has, and how to get started. This will be shown to the user as your response.
-
-### IMPORTANT:
-- The <FILES> block must contain EVERY file you generated with COMPLETE content.
-- JSON must be strictly valid RFC 8259:
-  * All quotes inside code (JSX attributes like className="...", strings, imports) MUST be escaped as \\"
-  * All newlines inside code MUST be escaped as \\n
-  * Backslashes MUST be escaped as \\\\
-  * Do NOT leave raw unescaped double quotes inside the "content" values.
-- Never truncate file content inside the JSON block.
-- Framework: ${framework.toUpperCase()} — respect this. Do not substitute another framework.`;
+CRITICAL RULES FOR FILE GENERATION:
+1. Always include the exact relative filepath in the code fence header (e.g. \`\`\`tsx filename=app/page.tsx or \`\`\`json filename=package.json).
+2. Generate all core frontend and component files needed for the application to compile, look stunning, and be fully interactive.
+3. Every imported file or component MUST be generated. Never import a file that you do not generate.
+4. After all code blocks are finished, write 2-3 friendly sentences explaining what features you built and how to get started.
+5. Framework: ${framework.toUpperCase()} — respect this. Do not substitute another framework.`;
 }
 
 // ─── Suggested prompts ────────────────────────────────────────────────────

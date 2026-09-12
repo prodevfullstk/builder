@@ -95,6 +95,12 @@ function resolveFilePath(header: string, content: string, fileIndex: number): st
   const pathMatch = header.match(/(?:filename|path|file)=["']?([^"'\s}]+)["']?/i);
   if (pathMatch) filePath = pathMatch[1].trim();
 
+  // 2b. Space-separated path: ```tsx app/page.tsx or ```json package.json
+  if (!filePath) {
+    const spaceMatch = header.match(/^[A-Za-z0-9_-]+\s+([a-zA-Z0-9_./-]+\.[a-zA-Z0-9]{1,6})/);
+    if (spaceMatch) filePath = spaceMatch[1].trim();
+  }
+
   // 3. {path=...} brace format
   if (!filePath) {
     const braceMatch = header.match(/\{path=([^}]+)\}/i);

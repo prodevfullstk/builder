@@ -26,9 +26,9 @@ export interface StreamGenerationOptions {
 }
 
 const CANDIDATE_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-1.5-flash",
+  "gemini-3.6-flash",
+  "gemini-3.7-flash",
+  "gemini-flash-latest",
   "gemini-3.5-flash",
 ];
 
@@ -38,7 +38,7 @@ async function fetchWithRetry(
   options: RequestInit,
   maxRetries = 1,
   delayMs = 600,
-  timeoutMs = 15000
+  timeoutMs = 45000
 ): Promise<Response> {
   let lastRes: Response | null = null;
 
