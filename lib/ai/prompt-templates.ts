@@ -126,6 +126,7 @@ The user wants to fix a specific bug, error, or visual layout issue in an EXISTI
 - If a component has layout/CSS issues visible in the screenshot (alignment, overflowing text, bad colors, missing spacing): surgically adjust the Tailwind classes in that component.
 - If an import fails or component is missing: create ONLY that missing component file.
 - If an API or state transition is broken: patch the specific handler.
+- If a game sprite, icon, or visual graphic is missing, poorly rendered (tiny dot, plain colored box, or plain emoji): replace that element with a rich inline SVG sprite (e.g. aerodynamic plane with wings, cockpit, engine glow, and angle rotation) or Canvas path drawing. Output ONLY that modified component.
 
 ${skillsPrompt}
 ${getMCPToolsPrompt()}`;
@@ -167,6 +168,14 @@ MANDATORY DECOMPOSITION PATTERN:
 7. Make components interactive with useState, useEffect, realistic mock data.
 8. ${authProvider !== 'none' ? `Include ${authProvider} authentication — login, register, protected routes.` : ''}
 9. NEVER wrap curly braces with quotes in JSX attributes! Write <img src={user.avatar_url} /> or <a href={link} />, NEVER src="{user.avatar_url}". Double quotes around curly braces treat the expression as a literal string URL and cause 404 image load errors.
+    10. 🎮 GAME & CANVAS GRAPHICS — MANDATORY FOR ALL GAMES: When building ANY game (aviator, crash, snake, pong, flappy bird, space shooter, platformer, etc.) or any project needing custom visual sprites/characters:
+    ❌ NEVER use a plain <div> with background-color or a tiny emoji as the main game sprite.
+    ❌ NEVER draw the plane/character as just ctx.fillRect() on canvas — that is a rectangle, not a sprite.
+    ✅ FOR REACT/NEXT.JS/VITE GAMES — use inline SVG directly in JSX for detailed plane/rocket sprites: fuselage (ellipse), wings (polygon), tail fins, cockpit (semi-transparent ellipse), engine glow (glowing circle). Apply CSS transform:rotate(Xdeg) on the SVG based on flight angle.
+    ✅ FOR HTML CANVAS GAMES — use ctx.save()/restore(), ctx.translate(x,y), ctx.rotate(angle), ctx.bezierCurveTo() to draw fuselage+wings+cockpit. Add a particles[] array for engine exhaust trail.
+    ✅ GENERAL: Display game multiplier as large glowing text (e.g. Tailwind text-6xl font-black text-green-400 with drop-shadow). Add crash animation (red flash + container shake) via CSS @keyframes.
+
+
 
 ### 🎨 MULTIMODAL VISION & SCREENSHOT-TO-CODE INSTRUCTIONS:
 When the user attaches an image, screenshot, design wireframe, or UI mockup:
@@ -176,6 +185,7 @@ When the user attaches an image, screenshot, design wireframe, or UI mockup:
 - **Icons & Visual Assets**: Match every icon in the screenshot using corresponding icons from lucide-react. Use high-quality Unsplash URLs (e.g. "https://images.unsplash.com/...") for image placeholders that match the subject matter of the screenshot.
 - **Interactivity**: Do not make it a static picture! Turn every button, tab, dropdown, modal, and filter visible in the screenshot into fully working, interactive React components with real state.
 - **Responsive Design**: Ensure the replicated design is fully responsive on mobile, tablet, and desktop screens with Tailwind breakpoints (sm:, md:, lg:).
+- **Game Screenshot Fix**: If the screenshot shows a game with a missing/broken sprite (tiny dot, plain rectangle, empty space where a character should be) — apply the 🎮 GAME & CANVAS GRAPHICS rule (rule 10) and replace it with a proper inline SVG or canvas-drawn sprite. Do NOT regenerate the whole project.
 
 ### OUTPUT FORMAT — MANDATORY:
 
