@@ -43,11 +43,31 @@ ${files[activeFile].slice(0, 8000)}
 
 User instruction: ${message}`;
     } else if (mode === "auto-fix") {
+      // Prioritize files cited in the error trace, package.json, and the active file
+      const mentionedPaths = Object.keys(files).filter((p) =>
+        message.toLowerCase().includes(p.toLowerCase())
+      );
+      if (files["package.json"] && !mentionedPaths.includes("package.json")) {
+        mentionedPaths.push("package.json");
+      }
+      if (activeFile && !mentionedPaths.includes(activeFile) && files[activeFile]) {
+        mentionedPaths.unshift(activeFile);
+      }
+
       const fileSummary = Object.entries(files)
-        .slice(0, 10)
-        .map(([path, content]) => `\`\`\`${path}\n${String(content).slice(0, 1200)}\n\`\`\``)
+        .sort(([a], [b]) => {
+          const aPri = mentionedPaths.includes(a) ? 1 : 0;
+          const bPri = mentionedPaths.includes(b) ? 1 : 0;
+          return bPri - aPri;
+        })
+        .slice(0, 12)
+        .map(([path, content]) => {
+          const isTarget = mentionedPaths.includes(path);
+          const maxLen = isTarget ? 6000 : 1500;
+          return `\`\`\`${path}\n${String(content).slice(0, maxLen)}\n\`\`\``;
+        })
         .join("\n\n");
-      userContent = `PREVIEW SANDBOX ERROR DETECTED:\n${message}\n\nCURRENT PROJECT FILES (${framework}):\n${fileSummary}\n\nPlease inspect the error, identify which file caused it, and repair it using <TOOL_CALL> (edit_file or write_file) or corrected <FILES> block.`;
+      userContent = `PREVIEW SANDBOX ERROR DETECTED:\n${message}\n\nCURRENT PROJECT FILES (${framework}):\n${fileSummary}\n\nDIAGNOSTIC PROTOCOL REQUIRED:\n1. Identify error category (TYPE_A to TYPE_E).\n2. Apply minimal surgical fix to the offending file without deleting working features or reducing state.\n3. Output corrected file via <TOOL_CALL> (edit_file/write_file) or corrected <FILES> block.`;
     } else if (mode === "build" && Object.keys(files).length > 0) {
       // Provide existing project context for incremental edits
       const fileSummary = Object.entries(files)

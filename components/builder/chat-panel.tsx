@@ -208,18 +208,25 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         m.content.toLowerCase().includes('app') ||
         m.content.includes('তৈরি') ||
         m.content.includes('বানাতে') ||
-        m.content.includes('প্রজেক্ট')
+        m.content.includes('প্রজেক্ট') ||
+        m.content.includes('recommendation')
       )
     );
 
     const isConversationalBuildTrigger = isAffirmativeConfirmation && hasProjectContextInHistory;
-    const isBuild = hasBuildVerb || (hasAppNoun && query.length > 15) || isConversationalBuildTrigger;
 
     // BUG4 fix: only wipe existing files when truly starting from scratch
     // "create a navbar" / "add a hero section" should NOT wipe the project
     const hasExistingFiles = Object.keys(files).length > 0;
     const isExplicitRebuild = /^(rebuild|start over|start fresh|from scratch|reset|clear project|new project)/i.test(query.trim());
     const isNewBuild = !hasExistingFiles || isExplicitRebuild;
+
+    // Detect if prompt is extremely vague on a fresh project without any screenshot
+    // (e.g. "build a crypto app", "একটি ওয়েবসাইট বানান") without feature specifics.
+    // Route to chat mode so the AI executes the requirements grilling protocol before building.
+    const isVeryVagueInitialPrompt = isNewBuild && !attachedImage && query.length < 35 && !query.includes('\n') && !/\b(with|include|features|hero|pricing|navbar|table|chart|auth|login|signup|theme|page|dashboard with|using)\b/i.test(query) && !isAffirmativeConfirmation;
+
+    const isBuild = (hasBuildVerb || (hasAppNoun && query.length > 15) || isConversationalBuildTrigger) && !isVeryVagueInitialPrompt;
 
     // ── CONVERSATION MODE ─────────────────────────────────────
     if (!isBuild) {
