@@ -195,46 +195,6 @@ export function PreviewPane() {
               <Smartphone className="w-3.5 h-3.5" />
             </button>
           </div>
-
-          {/* Triple Engine Switcher */}
-          <div className="flex items-center gap-0.5 bg-zinc-950 p-0.5 rounded-md border border-zinc-800 text-[11px]">
-            <button
-              onClick={() => setEngine('vercel')}
-              className={`flex items-center gap-1 px-2 py-0.5 rounded transition-colors ${
-                engine === 'vercel'
-                  ? 'bg-blue-600 text-white font-medium shadow-xs'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-              title="Vercel Sandbox: Cloud MicroVM runtime (Primary)"
-            >
-              <Cloud className="w-3 h-3 text-sky-300" />
-              <span>Vercel Sandbox</span>
-            </button>
-            <button
-              onClick={() => setEngine('instant')}
-              className={`flex items-center gap-1 px-2 py-0.5 rounded transition-colors ${
-                engine === 'instant'
-                  ? 'bg-blue-600 text-white font-medium shadow-xs'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-              title="Instant Preview (< 500ms in-browser compilation)"
-            >
-              <Zap className="w-3 h-3 text-amber-300" />
-              <span>Instant</span>
-            </button>
-            <button
-              onClick={() => setEngine('nodebox')}
-              className={`flex items-center gap-1 px-2 py-0.5 rounded transition-colors ${
-                engine === 'nodebox'
-                  ? 'bg-zinc-800 text-zinc-100 font-medium'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-              title="Nodebox: In-browser Node.js runtime"
-            >
-              <Box className="w-3 h-3" />
-              <span>Nodebox</span>
-            </button>
-          </div>
         </div>
 
         {/* Center: URL Bar Mockup */}
@@ -385,6 +345,10 @@ export function PreviewPane() {
               onError={(err) => {
                 addLog(`[Preview Error] ${err}`);
                 setRuntimeError(err);
+                if (hasBackend) {
+                  addLog('[Preview Fallback] Backend detected — switching to Nodebox runtime.');
+                  setEngine('nodebox');
+                }
               }}
               onScreenshot={(dataUrl) => {
                 updateLastMessageScreenshot(dataUrl);
