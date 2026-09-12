@@ -5,6 +5,7 @@
 
 import { getFullStackDBGuide, DBProvider, AuthProvider } from './database-templates';
 import { getMCPToolsPrompt } from './mcp-tools';
+import { renderSkillsPrompt } from '../skills/catalog';
 
 // ─── Framework-specific file structure guides ──────────────────────────────
 
@@ -69,16 +70,18 @@ export function getSystemPrompt(
   framework: string = 'nextjs',
   dbProvider: string = 'none',
   authProvider: string = 'none',
-  mode: 'build' | 'chat' | 'edit' | 'auto-fix' = 'build'
+  mode: 'build' | 'chat' | 'edit' | 'auto-fix' = 'build',
+  customSkillIds?: string[]
 ): string {
   const frameworkGuide = FRAMEWORK_GUIDES[framework] || FRAMEWORK_GUIDES['nextjs'];
   const dbGuide = getFullStackDBGuide(dbProvider as DBProvider, authProvider as AuthProvider);
+  const skillsPrompt = renderSkillsPrompt(customSkillIds, mode);
 
   if (mode === 'chat') {
     return `You are Opendork, a friendly AI assistant for a fullstack web app builder.
 Answer the user conversationally, helpfully, and concisely in the user's language (Bengali or English).
 If the user asks to build, create, or modify a website, invoke MCP tools (<TOOL_CALL> with write_file/edit_file) or provide code inside a <FILES> block so the builder creates project files. Do NOT dump raw code into plain chat text.
-
+${skillsPrompt}
 ${getMCPToolsPrompt()}`;
   }
 
@@ -105,7 +108,7 @@ YOUR GOAL:
 3. Repair the code using <TOOL_CALL> with edit_file or write_file, or provide corrected files in a <FILES> block.
 4. Keep all other working features intact. Do NOT delete unrelated files.
 5. Explain what caused the bug and how you resolved it in 1-2 friendly sentences.
-
+${skillsPrompt}
 ${getMCPToolsPrompt()}`;
   }
 
@@ -115,6 +118,7 @@ You build complete, production-ready web applications.
 
 ${frameworkGuide}
 ${dbGuide}
+${skillsPrompt}
 ${getMCPToolsPrompt()}
 
 ### ⚠️ CRITICAL GENERATION RULES:

@@ -17,7 +17,8 @@ export async function POST(req: NextRequest) {
       framework = "nextjs",
       dbProvider = "none",
       authProvider = "none",
-      mode = "build",  // "build" | "chat" | "edit"
+      mode = "build",  // "build" | "chat" | "edit" | "auto-fix"
+      skills = undefined, // optional custom skill IDs
     } = body;
 
     if (!message || typeof message !== "string") {
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const systemPrompt = getSystemPrompt(framework, dbProvider, authProvider, mode);
+    const systemPrompt = getSystemPrompt(framework, dbProvider, authProvider, mode, skills);
 
     // Build user content based on mode
     let userContent = message;
