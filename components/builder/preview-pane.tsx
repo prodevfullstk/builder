@@ -61,7 +61,7 @@ export function PreviewPane() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [backendUrl, setBackendUrl] = useState<string | null>(null);
   const [engine, setEngine] = useState<'vercel' | 'instant' | 'nodebox'>('vercel');
-  const [fallbackWarning, setFallbackWarning] = useState<string[] | null>(null);
+
   const [isFixing, setIsFixing] = useState(false);
 
   // Detect if project has a backend server.js file
@@ -129,21 +129,7 @@ export function PreviewPane() {
     }
   };
 
-  // Listen for fallback-warning from preview iframe
-  React.useEffect(() => {
-    const handler = (event: MessageEvent) => {
-      if (event.data?.type === 'preview-fallback-warning' && Array.isArray(event.data.fallbacks)) {
-        setFallbackWarning(event.data.fallbacks);
-      }
-    };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
-  }, []);
 
-  // Clear warning when files change (new generation)
-  React.useEffect(() => {
-    setFallbackWarning(null);
-  }, [files]);
 
   const getViewportWidth = () => {
     switch (viewport) {
@@ -355,14 +341,7 @@ export function PreviewPane() {
         </div>
       )}
 
-      {/* Fallback Warning Banner */}
-      {fallbackWarning && fallbackWarning.length > 0 && (
-        <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border-b border-amber-500/25 text-[11px] text-amber-400">
-          <span>⚠️</span>
-          <span>Preview uses system fallbacks for: <strong>{fallbackWarning.join(', ')}</strong> — AI did not generate these components.</span>
-          <button onClick={() => setFallbackWarning(null)} className="ml-auto text-amber-600 hover:text-amber-400">✕</button>
-        </div>
-      )}
+
 
       {/* Main Preview Container */}
       <div className="flex-1 bg-zinc-900/40 p-3 flex justify-center items-center overflow-auto relative">

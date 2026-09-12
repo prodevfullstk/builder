@@ -503,19 +503,6 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
           setTimeout(() => spinner.remove(), 200);
         }
 
-        // Detect which system fallback files were used (not overridden by AI)
-        const fallbackKeys = Object.keys(defaultFiles);
-        const aiKeys = Object.keys(rawFiles);
-        const usedFallbacks = fallbackKeys.filter(k => !aiKeys.includes(k));
-        if (usedFallbacks.length > 0) {
-          try {
-            window.parent.postMessage({
-              type: 'preview-fallback-warning',
-              fallbacks: usedFallbacks.map(f => f.split('/').pop()),
-            }, '*');
-          } catch(e) {}
-        }
-
         // Auto-screenshot after React has painted
         setTimeout(async () => {
           try {
