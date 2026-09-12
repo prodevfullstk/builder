@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Sparkles,
@@ -162,8 +163,24 @@ export default function HomePage() {
               </div>
             </div>
 
+            {/* Center navigation */}
+            <nav className="hidden sm:flex items-center gap-6 text-sm font-medium text-zinc-400">
+              <Link href="/builder" className="hover:text-white transition-colors">
+                Builder
+              </Link>
+              <Link href="/pricing" className="hover:text-white transition-colors">
+                Pricing
+              </Link>
+            </nav>
+
             {/* Action CTAs */}
             <div className="flex items-center gap-3">
+              <Link
+                href="/pricing"
+                className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 text-xs font-semibold transition-all shadow-sm"
+              >
+                <span>Plans</span>
+              </Link>
               {/* User Profile / Login Menu */}
               <UserMenu />
             </div>

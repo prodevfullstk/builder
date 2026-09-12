@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import Link from 'next/link';
 import {
   User,
   LogOut,
@@ -9,6 +10,7 @@ import {
   Sparkles,
   ChevronDown,
   Shield,
+  CreditCard,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth/supabase-auth';
 import { useCreditsStore } from '@/lib/store/credits-store';
@@ -94,6 +96,19 @@ export function UserMenu() {
             </span>
             <span className="font-mono text-emerald-400 font-bold">{credits} pts</span>
           </button>
+
+          {/* Pricing & Upgrade link */}
+          <Link
+            href="/pricing"
+            onClick={() => setDropdownOpen(false)}
+            className="w-full text-left px-3.5 py-2 hover:bg-zinc-900 text-zinc-300 hover:text-white flex items-center justify-between transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <CreditCard className="w-3.5 h-3.5 text-blue-400" />
+              Pricing & Plans
+            </span>
+            <span className="text-[10px] text-blue-400 font-semibold uppercase">Upgrade</span>
+          </Link>
 
           {/* Sign Out */}
           <div className="border-t border-zinc-800/80 mt-1 pt-1">

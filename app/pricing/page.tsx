@@ -1,0 +1,661 @@
+'use client';
+
+import React, { useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import {
+  Sparkles,
+  Zap,
+  Check,
+  ArrowRight,
+  ShieldCheck,
+  CreditCard,
+  HelpCircle,
+  ChevronDown,
+  ChevronUp,
+  Gift,
+  Bot,
+  Layers,
+  Code2,
+  Terminal,
+  Globe,
+  Cpu,
+  Star,
+  CheckCircle2,
+  X as CloseIcon,
+} from 'lucide-react';
+import { useCreditsStore, ACTION_COSTS } from '@/lib/store/credits-store';
+import { UserMenu } from '@/components/auth/user-menu';
+
+interface PricingPlan {
+  id: string;
+  name: string;
+  description: string;
+  badge?: string;
+  isPopular?: boolean;
+  monthlyPrice: number;
+  yearlyPrice: number;
+  creditsPerMonth: number;
+  features: string[];
+  ctaLabel: string;
+  ctaVariant: 'outline' | 'gradient' | 'secondary';
+  tierType: 'free' | 'pro' | 'unlimited';
+}
+
+const PRICING_PLANS: PricingPlan[] = [
+  {
+    id: 'starter',
+    name: 'Hobby / Starter',
+    description: 'Perfect for exploring ideas, prototyping weekend projects, and casual building.',
+    monthlyPrice: 0,
+    yearlyPrice: 0,
+    creditsPerMonth: 100,
+    features: [
+      '100 initial AI starter credits included',
+      '+15 daily bonus credits (claim every 24h)',
+      'Dual-provider inference (Gemini + Groq 120B)',
+      'Bolt-style real-time plan stepper & streaming',
+      'In-browser instant preview & Babel transpilation',
+      'Next.js 15, Vite React, Astro & Node.js frameworks',
+      'One-click ZIP project export',
+      'Standard community support',
+    ],
+    ctaLabel: 'Start Building Free',
+    ctaVariant: 'outline',
+    tierType: 'free',
+  },
+  {
+    id: 'pro',
+    name: 'Pro Builder',
+    description: 'For indie hackers, developers, and creators shipping production-ready web apps.',
+    badge: '🔥 Most Popular',
+    isPopular: true,
+    monthlyPrice: 19,
+    yearlyPrice: 15,
+    creditsPerMonth: 1500,
+    features: [
+      '1,500 AI credits / month (~150 full web apps)',
+      'Priority inference on Groq openai/gpt-oss-120b (~450 tok/s)',
+      'Surgical screenshot-to-code visual bug repair',
+      'Autonomous error self-healing (Esbuild verification)',
+      'Fullstack Supabase database & auth code generator',
+      'Direct GitHub repository scan & push integration',
+      'High-speed virtual sandbox with zero rate-limit queue',
+      'Priority Discord & developer email support',
+    ],
+    ctaLabel: 'Upgrade to Pro',
+    ctaVariant: 'gradient',
+    tierType: 'pro',
+  },
+  {
+    id: 'unlimited',
+    name: 'Team & Unlimited',
+    description: 'For agencies, professional software engineers, and power builders with high velocity.',
+    badge: '⚡ Maximum Power',
+    monthlyPrice: 49,
+    yearlyPrice: 39,
+    creditsPerMonth: 5000,
+    features: [
+      '5,000 AI credits / month (virtually unlimited creation)',
+      'Bring Your Own Key (BYOK) for Gemini & Groq ($0 markup)',
+      'Unlimited visual screenshot repairs & diffing',
+      'Custom system prompt instructions & MCP tools',
+      'Multi-seat workspace & project sharing',
+      'Advanced SQL schema, seeds, & server actions generator',
+      'Dedicated high-concurrency sandbox instances',
+      '1-on-1 architecture review & dedicated SLA',
+    ],
+    ctaLabel: 'Get Team Unlimited',
+    ctaVariant: 'secondary',
+    tierType: 'unlimited',
+  },
+];
+
+const TOPUP_PACKS = [
+  {
+    id: 'pack-starter',
+    credits: 250,
+    price: 5,
+    label: 'Starter Boost',
+    description: 'Great for building ~25 additional web apps or 80 feature edits.',
+    tag: 'Quick Refill',
+  },
+  {
+    id: 'pack-power',
+    credits: 750,
+    price: 12,
+    label: 'Power Pack',
+    description: 'Most popular top-up with 15% discount per token.',
+    tag: 'Best Value',
+    isPopular: true,
+  },
+  {
+    id: 'pack-mega',
+    credits: 2000,
+    price: 25,
+    label: 'Mega Studio Pack',
+    description: 'Heavy builder refill with 30% savings for intensive multi-page workflows.',
+    tag: 'Highest Savings',
+  },
+];
+
+const FAQS = [
+  {
+    question: 'How do Opendork AI credits work?',
+    answer:
+      'Credits power all code generation and AI operations. Creating a brand new fullstack project costs 10 credits, modifying a component costs 3 credits, running autonomous error repair costs 2 credits, and general architectural chat costs 1 credit. Every free user receives 100 starter credits and 15 free bonus credits every single day.',
+  },
+  {
+    question: 'What AI models power Opendork?',
+    answer:
+      'Opendork uses a resilient Dual-Provider Engine: Google Gemini Flash (with multimodal vision) is our primary model, backed by Groq Cloud running openai/gpt-oss-120b (a 120-billion parameter frontier reasoning model) and Qwen Vision. If one provider hits capacity, Opendork automatically fails over in milliseconds with zero downtime.',
+  },
+  {
+    question: 'Can I export my code and host it anywhere?',
+    answer:
+      'Yes! 100% of the code generated by Opendork is standard Next.js, Vite React, or Astro code with clean TypeScript and Tailwind CSS. You can download the complete project as a standard ZIP file or push directly to your GitHub repository with one click, then deploy to Vercel, Netlify, Cloudflare, or your own server.',
+  },
+  {
+    question: 'Can I bring my own API keys (BYOK)?',
+    answer:
+      'Yes! On the Team & Unlimited plan (or via project settings), you can configure your own Gemini and Groq API keys to build with unlimited tokens directly against your own provider accounts with zero platform fee.',
+  },
+  {
+    question: 'Can I switch or cancel plans at any time?',
+    answer:
+      'Yes, you can cancel or switch your subscription at any time without any hidden fees. Your credits and saved projects will remain active in your workspace.',
+  },
+];
+
+export default function PricingPage() {
+  const router = useRouter();
+  const [isAnnual, setIsAnnual] = useState(true);
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
+  const [notification, setNotification] = useState<string | null>(null);
+
+  const { credits, tier, addCredits } = useCreditsStore();
+
+  const handlePlanSelect = (plan: PricingPlan) => {
+    if (plan.tierType === 'free') {
+      router.push('/builder');
+      return;
+    }
+
+    // Simulate instant Pro upgrade & add plan credits
+    addCredits(
+      plan.creditsPerMonth,
+      `Subscribed to ${plan.name} (${isAnnual ? 'Annual' : 'Monthly'})`,
+      'PRO_PURCHASE'
+    );
+    showNotification(`🎉 Successfully upgraded to ${plan.name}! +${plan.creditsPerMonth} credits added.`);
+  };
+
+  const handleBuyTopup = (pack: typeof TOPUP_PACKS[0]) => {
+    addCredits(pack.credits, `Purchased ${pack.label}`, 'PRO_PURCHASE');
+    showNotification(`⚡ +${pack.credits} Credits added to your account!`);
+  };
+
+  const showNotification = (msg: string) => {
+    setNotification(msg);
+    setTimeout(() => setNotification(null), 4000);
+  };
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col selection:bg-blue-600 selection:text-white relative overflow-x-hidden">
+      {/* Ambient background glows */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1100px] h-[450px] bg-gradient-to-b from-blue-600/15 via-indigo-600/10 to-transparent blur-[130px] pointer-events-none -z-10" />
+      <div className="absolute top-[600px] right-0 w-[500px] h-[500px] bg-purple-600/5 blur-[120px] pointer-events-none -z-10" />
+
+      {/* Notification Toast */}
+      {notification && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 bg-zinc-900 border border-emerald-500/40 text-emerald-300 rounded-xl shadow-2xl shadow-emerald-950/40 animate-in fade-in slide-in-from-bottom-3 duration-300">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="text-xs font-semibold">{notification}</span>
+          <button
+            onClick={() => setNotification(null)}
+            className="text-zinc-500 hover:text-white ml-2 cursor-pointer"
+          >
+            <CloseIcon className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Navigation Header */}
+      <header className="border-b border-zinc-800/80 bg-zinc-950/70 backdrop-blur-xl sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo */}
+            <Link href="/" className="flex items-center gap-3 group">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 via-indigo-600 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/25 group-hover:scale-105 transition-transform">
+                <Sparkles className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-xl font-bold tracking-tight text-white font-sans">
+                opendork
+              </span>
+            </Link>
+
+            {/* Navigation links */}
+            <div className="hidden md:flex items-center gap-6 text-sm font-medium text-zinc-400">
+              <Link href="/" className="hover:text-white transition-colors">
+                Home
+              </Link>
+              <Link href="/builder" className="hover:text-white transition-colors">
+                Builder
+              </Link>
+              <Link href="/pricing" className="text-blue-400 font-semibold transition-colors">
+                Pricing
+              </Link>
+            </div>
+
+            {/* Action CTAs */}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-300">
+                <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                <span className="font-bold text-white">{credits}</span>
+                <span className="text-zinc-500 text-[10px]">pts</span>
+              </div>
+              <UserMenu />
+              <Link
+                href="/builder"
+                className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md shadow-blue-900/30 transition-all hover:scale-105"
+              >
+                <span>Launch Builder</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Pricing Container */}
+      <main className="flex-1 flex flex-col items-center px-4 py-16 sm:py-20">
+        <div className="max-w-6xl mx-auto w-full space-y-16">
+          {/* Header Title Section */}
+          <div className="text-center space-y-4 max-w-3xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/25 text-blue-400 text-xs font-medium tracking-wide">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Transparent & Predictable AI Tokenomics</span>
+            </div>
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-tight">
+              Simple Pricing for <br />
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400">
+                Limitless Creation
+              </span>
+            </h1>
+            <p className="text-zinc-400 text-base sm:text-lg max-w-2xl mx-auto">
+              From instant prototype ideas to complete production fullstack web applications.
+              Choose the plan that fits your engineering velocity.
+            </p>
+
+            {/* Monthly / Annual Toggle Switch */}
+            <div className="flex items-center justify-center gap-3 pt-6">
+              <span className={`text-xs font-medium ${!isAnnual ? 'text-white' : 'text-zinc-400'}`}>
+                Monthly Billing
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsAnnual(!isAnnual)}
+                className="relative w-12 h-6 rounded-full bg-zinc-800 border border-zinc-700 transition-colors p-0.5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              >
+                <div
+                  className={`w-5 h-5 rounded-full bg-blue-500 shadow-md transform transition-transform ${
+                    isAnnual ? 'translate-x-6' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+              <div className="flex items-center gap-1.5">
+                <span className={`text-xs font-medium ${isAnnual ? 'text-white' : 'text-zinc-400'}`}>
+                  Annual Billing
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  Save 20%
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Pricing Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 items-stretch">
+            {PRICING_PLANS.map((plan) => {
+              const price = isAnnual ? plan.yearlyPrice : plan.monthlyPrice;
+
+              return (
+                <div
+                  key={plan.id}
+                  className={`relative rounded-2xl flex flex-col justify-between transition-all duration-300 ${
+                    plan.isPopular
+                      ? 'bg-gradient-to-b from-zinc-900 to-zinc-950 border-2 border-blue-500/60 shadow-2xl shadow-blue-950/50 hover:border-blue-400 scale-105 z-10'
+                      : 'bg-zinc-900/60 border border-zinc-800/90 hover:border-zinc-700 hover:bg-zinc-900/80 shadow-lg shadow-black/20'
+                  } p-6 sm:p-7`}
+                >
+                  {/* Popular Floating Badge */}
+                  {plan.badge && (
+                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[11px] font-bold tracking-wide uppercase shadow-md shadow-blue-900/40">
+                      {plan.badge}
+                    </div>
+                  )}
+
+                  <div className="space-y-6">
+                    {/* Header */}
+                    <div>
+                      <h2 className="text-xl font-bold text-white mb-1.5">{plan.name}</h2>
+                      <p className="text-xs text-zinc-400 leading-relaxed min-h-[36px]">
+                        {plan.description}
+                      </p>
+                    </div>
+
+                    {/* Price Display */}
+                    <div className="pt-2 pb-4 border-b border-zinc-800/80">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-4xl sm:text-5xl font-extrabold text-white tracking-tight font-mono">
+                          ${price}
+                        </span>
+                        <span className="text-xs text-zinc-500 font-medium">
+                          / month {isAnnual && price > 0 ? '(billed annually)' : ''}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center gap-1.5 text-xs text-blue-400 font-medium font-mono">
+                        <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                        <span>{plan.creditsPerMonth.toLocaleString()} Credits / month</span>
+                      </div>
+                    </div>
+
+                    {/* Features List */}
+                    <div className="space-y-3">
+                      <span className="text-[11px] uppercase tracking-wider font-semibold text-zinc-400 block">
+                        Included Features:
+                      </span>
+                      <ul className="space-y-2.5">
+                        {plan.features.map((feat, i) => (
+                          <li key={i} className="flex items-start gap-2.5 text-xs text-zinc-300">
+                            <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                            <span className="leading-snug">{feat}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* CTA Button */}
+                  <div className="pt-8">
+                    <button
+                      type="button"
+                      onClick={() => handlePlanSelect(plan)}
+                      className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md ${
+                        plan.ctaVariant === 'gradient'
+                          ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:opacity-95 text-white shadow-blue-900/40 hover:scale-[1.02]'
+                          : plan.ctaVariant === 'secondary'
+                          ? 'bg-zinc-100 hover:bg-white text-zinc-950 hover:scale-[1.02]'
+                          : 'bg-zinc-800/90 hover:bg-zinc-700 text-zinc-200 border border-zinc-700/80 hover:text-white'
+                      }`}
+                    >
+                      <span>{plan.ctaLabel}</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Action Cost Tokenomics Matrix */}
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6 sm:p-8 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Cpu className="w-5 h-5 text-blue-400" />
+                  <span>Credit Consumption Matrix</span>
+                </h2>
+                <p className="text-xs text-zinc-400 mt-1">
+                  How credits are consumed when generating, refactoring, and fixing code.
+                </p>
+              </div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-xs font-mono text-zinc-400">
+                <span>Free Daily Refresh:</span>
+                <span className="text-amber-400 font-bold">+15 pts / 24h</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+              <div className="p-4 rounded-xl bg-zinc-950/80 border border-zinc-800 text-center space-y-1">
+                <span className="text-[11px] text-zinc-400 block font-medium">New Fullstack Project</span>
+                <span className="text-2xl font-extrabold text-white font-mono block">
+                  {ACTION_COSTS.NEW_PROJECT_BUILD} pts
+                </span>
+                <span className="text-[10px] text-zinc-500 block">5-8 complete files + types</span>
+              </div>
+
+              <div className="p-4 rounded-xl bg-zinc-950/80 border border-zinc-800 text-center space-y-1">
+                <span className="text-[11px] text-zinc-400 block font-medium">Feature & File Edit</span>
+                <span className="text-2xl font-extrabold text-white font-mono block">
+                  {ACTION_COSTS.FEATURE_EDIT} pts
+                </span>
+                <span className="text-[10px] text-zinc-500 block">Surgical code modifications</span>
+              </div>
+
+              <div className="p-4 rounded-xl bg-zinc-950/80 border border-zinc-800 text-center space-y-1">
+                <span className="text-[11px] text-zinc-400 block font-medium">Auto-Fix & Visual Fix</span>
+                <span className="text-2xl font-extrabold text-white font-mono block">
+                  {ACTION_COSTS.AUTO_FIX} pts
+                </span>
+                <span className="text-[10px] text-zinc-500 block">Screenshot or runtime repairs</span>
+              </div>
+
+              <div className="p-4 rounded-xl bg-zinc-950/80 border border-zinc-800 text-center space-y-1">
+                <span className="text-[11px] text-zinc-400 block font-medium">Chat & Consultation</span>
+                <span className="text-2xl font-extrabold text-white font-mono block">
+                  {ACTION_COSTS.CHAT_PLAN} pt
+                </span>
+                <span className="text-[10px] text-zinc-500 block">Requirements & questions</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Pay-As-You-Go Credit Top-Up Addons */}
+          <div className="space-y-6">
+            <div className="text-center max-w-2xl mx-auto space-y-2">
+              <h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
+                <CreditCard className="w-5 h-5 text-emerald-400" />
+                <span>Pay-As-You-Go Credit Top-Ups</span>
+              </h2>
+              <p className="text-xs text-zinc-400">
+                Need more points without a monthly subscription? Refill your balance anytime.
+                Top-up credits never expire.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {TOPUP_PACKS.map((pack) => (
+                <div
+                  key={pack.id}
+                  className={`p-5 rounded-2xl bg-zinc-900/50 border transition-all ${
+                    pack.isPopular
+                      ? 'border-emerald-500/50 bg-emerald-500/5 shadow-lg shadow-emerald-950/20'
+                      : 'border-zinc-800 hover:border-zinc-700'
+                  } flex flex-col justify-between space-y-4`}
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white">{pack.label}</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        {pack.tag}
+                      </span>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-extrabold text-white font-mono">
+                        +{pack.credits}
+                      </span>
+                      <span className="text-xs text-zinc-400 font-mono">pts</span>
+                    </div>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      {pack.description}
+                    </p>
+                  </div>
+
+                  <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between">
+                    <span className="text-lg font-bold text-white font-mono">${pack.price}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleBuyTopup(pack)}
+                      className="py-1.5 px-3.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-all hover:scale-105 cursor-pointer"
+                    >
+                      Refill Now
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Detailed Feature Comparison Table */}
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6 sm:p-8 space-y-6">
+            <h2 className="text-xl font-bold text-white text-center">Feature Breakdown Comparison</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-zinc-300">
+                <thead>
+                  <tr className="border-b border-zinc-800 text-zinc-400 uppercase text-[10px] font-mono">
+                    <th className="py-3 px-4 font-semibold">Feature Area</th>
+                    <th className="py-3 px-4 font-semibold">Hobby / Free</th>
+                    <th className="py-3 px-4 font-semibold text-blue-400">Pro Builder</th>
+                    <th className="py-3 px-4 font-semibold text-purple-400">Team Unlimited</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800/60 font-sans">
+                  <tr>
+                    <td className="py-3 px-4 font-medium text-white">Monthly AI Credits</td>
+                    <td className="py-3 px-4 text-zinc-400 font-mono">100 + 15/day</td>
+                    <td className="py-3 px-4 text-blue-300 font-mono font-bold">1,500 pts</td>
+                    <td className="py-3 px-4 text-purple-300 font-mono font-bold">5,000 pts</td>
+                  </tr>
+                  <tr>
+                    <td className="py-3 px-4 font-medium text-white">Inference Engine</td>
+                    <td className="py-3 px-4">Dual (Gemini + Groq)</td>
+                    <td className="py-3 px-4 text-blue-300">Priority Groq 120B (~450 tok/s)</td>
+                    <td className="py-3 px-4 text-purple-300">Ultra-low latency queue</td>
+                  </tr>
+                  <tr>
+                    <td className="py-3 px-4 font-medium text-white">Multimodal Vision & Screenshot Fix</td>
+                    <td className="py-3 px-4">Standard</td>
+                    <td className="py-3 px-4 text-blue-300">Surgical Visual-Fix Engine</td>
+                    <td className="py-3 px-4 text-purple-300">Unlimited Visual-Fixing</td>
+                  </tr>
+                  <tr>
+                    <td className="py-3 px-4 font-medium text-white">Autonomous Error Self-Healing</td>
+                    <td className="py-3 px-4">2 attempts / issue</td>
+                    <td className="py-3 px-4 text-blue-300">Continuous Auto-Healing</td>
+                    <td className="py-3 px-4 text-purple-300">Unlimited Auto-Healing</td>
+                  </tr>
+                  <tr>
+                    <td className="py-3 px-4 font-medium text-white">GitHub Direct Push & ZIP Export</td>
+                    <td className="py-3 px-4">ZIP Export Only</td>
+                    <td className="py-3 px-4 text-blue-300">Both GitHub Push & ZIP</td>
+                    <td className="py-3 px-4 text-purple-300">Both GitHub Push & ZIP</td>
+                  </tr>
+                  <tr>
+                    <td className="py-3 px-4 font-medium text-white">Fullstack Database (Supabase / SQL)</td>
+                    <td className="py-3 px-4">Basic schemas</td>
+                    <td className="py-3 px-4 text-blue-300">Full migrations, seeds & types</td>
+                    <td className="py-3 px-4 text-purple-300">Advanced multi-tenant architectures</td>
+                  </tr>
+                  <tr>
+                    <td className="py-3 px-4 font-medium text-white">Bring Your Own Key (BYOK)</td>
+                    <td className="py-3 px-4 text-zinc-500">—</td>
+                    <td className="py-3 px-4 text-zinc-500">—</td>
+                    <td className="py-3 px-4 text-emerald-400 font-semibold">Supported ($0 markup)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Frequently Asked Questions */}
+          <div className="space-y-6 max-w-3xl mx-auto">
+            <div className="text-center space-y-2">
+              <h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
+                <HelpCircle className="w-5 h-5 text-blue-400" />
+                <span>Frequently Asked Questions</span>
+              </h2>
+              <p className="text-xs text-zinc-400">
+                Everything you need to know about Opendork billing, credits, and code ownership.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {FAQS.map((faq, index) => {
+                const isOpen = openFaqIndex === index;
+                return (
+                  <div
+                    key={index}
+                    className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden transition-colors"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setOpenFaqIndex(isOpen ? null : index)}
+                      className="w-full px-5 py-4 flex items-center justify-between text-left text-sm font-semibold text-zinc-200 hover:text-white transition-colors cursor-pointer"
+                    >
+                      <span>{faq.question}</span>
+                      {isOpen ? (
+                        <ChevronUp className="w-4 h-4 text-zinc-400 shrink-0 ml-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0 ml-4" />
+                      )}
+                    </button>
+                    {isOpen && (
+                      <div className="px-5 pb-4 text-xs text-zinc-400 leading-relaxed border-t border-zinc-800/60 pt-3">
+                        {faq.answer}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Bottom CTA Banner */}
+          <div className="rounded-3xl border border-zinc-800 bg-gradient-to-r from-blue-900/20 via-indigo-900/20 to-purple-900/20 p-8 sm:p-12 text-center space-y-6 relative overflow-hidden">
+            <div className="absolute -top-24 -left-24 w-48 h-48 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-purple-500/20 rounded-full blur-3xl pointer-events-none" />
+
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
+              Ready to turn ideas into production code?
+            </h2>
+            <p className="text-zinc-400 text-sm sm:text-base max-w-xl mx-auto">
+              No complex setups, zero local environment configuration. Prompt in English or Bengali,
+              and watch your fullstack app come to life.
+            </p>
+            <div>
+              <Link
+                href="/builder"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm shadow-xl shadow-blue-900/40 transition-all hover:scale-105"
+              >
+                <span>Launch Opendork Builder</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t border-zinc-800/80 bg-zinc-950 py-8 text-center text-xs text-zinc-500">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-zinc-300">opendork</span>
+            <span>— Next-Generation AI Fullstack Web Builder</span>
+          </div>
+          <div className="flex items-center gap-6">
+            <Link href="/" className="hover:text-zinc-300 transition-colors">
+              Home
+            </Link>
+            <Link href="/builder" className="hover:text-zinc-300 transition-colors">
+              Builder
+            </Link>
+            <Link href="/pricing" className="hover:text-zinc-300 transition-colors">
+              Pricing
+            </Link>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
