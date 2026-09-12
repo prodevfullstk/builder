@@ -75,11 +75,11 @@ export function getSkillById(id: string): Skill | undefined {
   return SKILLS_CATALOG.find((s) => s.id === id);
 }
 
-export function getSkillsForMode(mode: 'build' | 'auto-fix' | 'chat' | 'edit'): Skill[] {
+export function getSkillsForMode(mode: 'build' | 'auto-fix' | 'visual-fix' | 'chat' | 'edit'): Skill[] {
   return SKILLS_CATALOG.filter((s) => s.defaultActiveInModes?.includes(mode));
 }
 
-export function renderSkillsPrompt(selectedSkillIds?: string[], mode?: 'build' | 'auto-fix' | 'chat' | 'edit'): string {
+export function renderSkillsPrompt(selectedSkillIds?: string[], mode?: 'build' | 'auto-fix' | 'visual-fix' | 'chat' | 'edit'): string {
   let skillsToRender: Skill[] = [];
 
   if (selectedSkillIds && selectedSkillIds.length > 0) {

@@ -7,6 +7,6 @@ export interface Skill {
   description: string;
   category: SkillCategory;
   tags: string[];
-  defaultActiveInModes?: ('build' | 'auto-fix' | 'chat' | 'edit')[];
+  defaultActiveInModes?: ('build' | 'auto-fix' | 'visual-fix' | 'chat' | 'edit')[];
   promptContent: string;
 }
