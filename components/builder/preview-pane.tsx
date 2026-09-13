@@ -82,7 +82,9 @@ export function PreviewPane() {
 
     setIsFixing(true);
     incrementAutoFixAttempts();
-    addLog(`[Auto-Fix] Attempt ${autoFixAttempts + 1}/2: Diagnosing preview error...`);
+    // CONC-402: Capture baseline revision before auto-fix request starts
+    const baselineRevision = useProjectStore.getState().revision || 1;
+    addLog(`[Auto-Fix] Attempt ${autoFixAttempts + 1}/2 (base rev ${baselineRevision}): Diagnosing preview error...`);
 
     try {
       const res = await fetch('/api/agent', {
@@ -151,7 +153,15 @@ export function PreviewPane() {
         return;
       }
 
-      // 3. Transactional Commit
+      // 3. Concurrency Gate (CONC-402): Reject stale candidate if workspace changed during repair
+      const currentRevision = useProjectStore.getState().revision || 1;
+      if (currentRevision !== baselineRevision) {
+        addLog(`[Auto-Fix Conflict] Stale repair candidate rejected: workspace advanced from revision ${baselineRevision} to ${currentRevision}.`);
+        setRuntimeError('Conflict: Your project changed while auto-fix was running. Repaired changes were not committed.');
+        return;
+      }
+
+      // 4. Transactional Commit
       setFiles(evalResult.committedFiles);
       clearRuntimeError();
       setPreviewKey((k) => k + 1);

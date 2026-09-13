@@ -249,9 +249,55 @@ export function seedAuthoritativeProject(
     framework,
     files,
     messages: [],
+    revision: 1,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
   registerServerProject(proj);
   return proj;
+}
+
+export interface CasUpdateResult {
+  success: boolean;
+  conflict?: boolean;
+  revision?: number;
+  currentRevision?: number;
+  expectedRevision?: number;
+  error?: string;
+  project?: AuthoritativeProject;
+}
+
+/**
+ * Update an authoritative server project using atomic Compare-And-Swap (CONC-401)
+ */
+export function updateServerProjectWithCas(
+  projectId: string,
+  expectedRevision: number,
+  updates: Partial<AuthoritativeProject>
+): CasUpdateResult {
+  const project = getServerProject(projectId);
+  if (!project) {
+    return { success: false, error: `Project not found with ID '${projectId}'.` };
+  }
+
+  const currentRev = project.revision ?? 1;
+  if (currentRev !== expectedRevision) {
+    return {
+      success: false,
+      conflict: true,
+      currentRevision: currentRev,
+      expectedRevision,
+      error: `Conflict: Stale revision detected. Expected revision ${expectedRevision}, but current revision is ${currentRev}.`,
+    };
+  }
+
+  const newRev = currentRev + 1;
+  const updated: AuthoritativeProject = {
+    ...project,
+    ...updates,
+    revision: newRev,
+    updatedAt: Date.now(),
+  };
+  registerServerProject(updated);
+  return { success: true, revision: newRev, project: updated };
 }

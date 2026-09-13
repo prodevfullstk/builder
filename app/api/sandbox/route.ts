@@ -3,6 +3,7 @@ import { Sandbox } from '@vercel/sandbox';
 import { generateInstantPreviewHtml } from '@/lib/preview/instant-preview-html';
 import { authenticateRequest } from '@/lib/auth/server-auth';
 import { verifyProjectOwnership, registerServerProject } from '@/lib/storage/project-authority';
+import { assertContainedSandboxPath } from '@/lib/sandbox/sandbox-containment';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -94,6 +95,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 2c. Canonical Path Containment Validation (SEC-401)
+    if (files && typeof files === 'object') {
+      for (const filePath of Object.keys(files)) {
+        assertContainedSandboxPath(filePath);
+      }
+    }
+
     const safeId = projectId
       .replace(/[^a-zA-Z0-9-]/g, '')
       .slice(0, 24)
@@ -147,8 +155,8 @@ export async function POST(req: NextRequest) {
 
       for (const [filePath, content] of Object.entries(files)) {
         if (typeof content !== 'string') continue;
-        const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
-        if (shouldCompileIndex && (cleanPath.toLowerCase() === 'index.html' || cleanPath.endsWith('/index.html'))) {
+        const targetPath = assertContainedSandboxPath(filePath);
+        if (shouldCompileIndex && (targetPath.toLowerCase() === '/vercel/app/index.html' || targetPath.endsWith('/index.html'))) {
           filesToWrite.push({
             path: `/vercel/app/index.source.html`,
             content,
@@ -156,7 +164,7 @@ export async function POST(req: NextRequest) {
           continue;
         }
         filesToWrite.push({
-          path: `/vercel/app/${cleanPath}`,
+          path: targetPath,
           content,
         });
       }
@@ -286,9 +294,9 @@ server.listen(3000, '0.0.0.0', () => {
     const filesToWrite: { path: string; content: string }[] = [];
     for (const [filePath, content] of Object.entries(files)) {
       if (typeof content !== 'string') continue;
-      const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+      const targetPath = assertContainedSandboxPath(filePath);
       filesToWrite.push({
-        path: `/vercel/app/${cleanPath}`,
+        path: targetPath,
         content,
       });
     }
@@ -348,14 +356,24 @@ server.listen(3000, '0.0.0.0', () => {
     }
 
     return NextResponse.json({
-      success: isSmokeReady,
-      previewUrl,
+      success: true,
       sandboxName,
+      previewUrl,
       status: isSmokeReady ? 'runtime_ready' : 'runtime_failed',
       mode: 'framework_runtime',
       isReady: isSmokeReady,
     });
   } catch (error: any) {
+    if (
+      error?.message?.includes('Security Violation: Path traversal') ||
+      error?.message?.includes('Security Violation: Absolute host path') ||
+      error?.message?.includes('null-byte')
+    ) {
+      return NextResponse.json(
+        { success: false, error: error.message },
+        { status: 400 }
+      );
+    }
     console.error('Vercel Sandbox API Error:', error);
     return NextResponse.json(
       {

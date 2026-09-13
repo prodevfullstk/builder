@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { createGeminiStream } from "@/lib/ai/gemini-stream";
 import { getSystemPrompt } from "@/lib/ai/prompt-templates";
 import { authenticateRequest } from "@/lib/auth/server-auth";
-import { checkRateLimit } from "@/lib/auth/rate-limiter";
+import { checkRateLimitDistributed } from "@/lib/auth/rate-limiter";
 
 function getClientIp(req: NextRequest): string {
   const forwarded = req.headers.get('x-forwarded-for');
@@ -48,11 +48,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Rate Limiting Gate (SEC-305 / P1-6)
+    // Rate Limiting Gate (SEC-305 / SEC-402)
     const isDemo = authResult.user.authMode === 'demo';
     const rateLimitKey = isDemo ? `demo:${getClientIp(req)}` : `user:${authResult.user.id}`;
     const maxRequests = isDemo ? 10 : 60;
-    const rateLimit = checkRateLimit(rateLimitKey, maxRequests, 3600_000);
+    const rateLimit = await checkRateLimitDistributed(rateLimitKey, maxRequests, 3600_000);
 
     if (!rateLimit.allowed) {
       return new Response(

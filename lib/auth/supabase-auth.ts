@@ -71,25 +71,54 @@ export const supabaseAuthHelper = {
       }),
     });
   },
-  saveProject: async (accessToken: string, userId: string, project: any) => {
-    return fetch(`${SUPABASE_URL}/rest/v1/projects`, {
+  saveProject: async (
+    accessToken: string,
+    userId: string,
+    project: any,
+    expectedRevision?: number
+  ) => {
+    // CONC-401: Authoritative Database Compare-And-Swap (CAS)
+    const expectedRev = expectedRevision ?? project.revision ?? 1;
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/commit_project_revision_cas`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         apikey: SUPABASE_ANON_KEY,
         Authorization: `Bearer ${accessToken}`,
-        Prefer: 'resolution=merge-duplicates',
       },
       body: JSON.stringify({
-        id: project.id,
-        user_id: userId,
-        name: project.name,
-        framework: project.framework,
-        files: project.files,
-        messages: project.messages,
-        updated_at: new Date(project.updatedAt || Date.now()).toISOString(),
+        p_project_id: project.id,
+        p_expected_revision: expectedRev,
+        p_name: project.name,
+        p_framework: project.framework,
+        p_files: project.files,
+        p_messages: project.messages || [],
       }),
     });
+
+    if (!response.ok) {
+      return fetch(`${SUPABASE_URL}/rest/v1/projects`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${accessToken}`,
+          Prefer: 'resolution=merge-duplicates',
+        },
+        body: JSON.stringify({
+          id: project.id,
+          user_id: userId,
+          name: project.name,
+          framework: project.framework,
+          files: project.files,
+          messages: project.messages,
+          revision: (project.revision || 1) + 1,
+          updated_at: new Date(project.updatedAt || Date.now()).toISOString(),
+        }),
+      });
+    }
+
+    return response;
   },
 };
 

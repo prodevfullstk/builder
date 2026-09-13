@@ -340,7 +340,7 @@ export class VercelSandboxRunner implements BuildRunner {
     // In cloud mode, preparation bundles the files for transmission
   }
 
-  async install(): Promise<BuildResult> {
+  async install(_timeoutMs?: number): Promise<BuildResult> {
     if (!this.hasCredentials()) {
       return {
         success: false,
@@ -360,7 +360,7 @@ export class VercelSandboxRunner implements BuildRunner {
     };
   }
 
-  async build(): Promise<BuildResult> {
+  async build(_timeoutMs?: number): Promise<BuildResult> {
     if (!this.hasCredentials()) {
       return {
         success: false,
@@ -380,7 +380,7 @@ export class VercelSandboxRunner implements BuildRunner {
     };
   }
 
-  async start(): Promise<RunningServer> {
+  async start(_port?: number, _timeoutMs?: number): Promise<RunningServer> {
     if (!this.hasCredentials()) {
       throw new Error('Verification Unavailable: Vercel credentials are not configured.');
     }

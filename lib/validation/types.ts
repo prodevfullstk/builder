@@ -14,6 +14,29 @@ export interface ValidationResult {
   diagnostics: string[];
 }
 
+export type VerificationLevel =
+  | 'STATIC_VALIDATED'
+  | 'VIRTUAL_PREVIEW_VALIDATED'
+  | 'NATIVE_BUILD_VERIFIED'
+  | 'RUNTIME_SMOKE_VERIFIED'
+  | 'REJECTED'
+  | 'CONFLICT'
+  | 'VERIFICATION_UNAVAILABLE';
+
+export interface NativeBuildRecord {
+  attempted: boolean;
+  status: 'passed' | 'failed' | 'unavailable';
+  framework: string;
+  runner: string;
+  environment: 'vercel_sandbox' | 'none';
+  command?: string;
+  exitCode?: number;
+  durationMs?: number;
+  stdoutSummary?: string;
+  stderrSummary?: string;
+  smokeTestPassed?: boolean;
+}
+
 export interface ValidationEvidence {
   validationId: string;
   projectId: string;
@@ -22,6 +45,8 @@ export interface ValidationEvidence {
   requestedFramework?: string;
   requestedFrameworkVersion?: string;
   resolvedFrameworkVersion?: string;
+  verificationLevel?: VerificationLevel;
+  nativeBuild?: NativeBuildRecord;
   checks: ValidationCheck[];
   accepted: boolean;
   diagnostics: string[];

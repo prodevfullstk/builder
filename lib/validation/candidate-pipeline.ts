@@ -225,6 +225,7 @@ export async function evaluateCandidateChanges(params: {
     projectId: projectId || 'transient-workspace',
     timestamp,
     framework,
+    verificationLevel: accepted ? 'STATIC_VALIDATED' : 'REJECTED',
     checks: allChecks,
     accepted,
     diagnostics: allDiagnostics,

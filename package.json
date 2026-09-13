@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "node ./node_modules/eslint/bin/eslint.js app components lib",
-    "test": "node -r ./test/test-register.js --test test/auth.test.ts test/ownership.test.ts test/framework-validation.test.ts test/candidate-pipeline.test.ts test/github-export.test.ts test/sandbox-status.test.ts test/mcp-security.test.ts test/mutation-boundary.test.ts test/transactional-commit.test.ts test/requirements-spec.test.ts test/build-runner.test.ts test/phase3-security.test.ts"
+    "test": "node -r ./test/test-register.js --test test/auth.test.ts test/ownership.test.ts test/framework-validation.test.ts test/candidate-pipeline.test.ts test/github-export.test.ts test/sandbox-status.test.ts test/mcp-security.test.ts test/mutation-boundary.test.ts test/transactional-commit.test.ts test/requirements-spec.test.ts test/build-runner.test.ts test/phase3-security.test.ts test/phase4-hardening.test.ts"
   },
   "dependencies": {
     "@codesandbox/nodebox": "^0.1.9",
