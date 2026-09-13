@@ -18,6 +18,7 @@ export type VerificationLevel =
   | 'STATIC_VALIDATED'
   | 'VIRTUAL_PREVIEW_VALIDATED'
   | 'NATIVE_BUILD_VERIFIED'
+  | 'NATIVE_BUILD_UNVERIFIED'
   | 'RUNTIME_SMOKE_VERIFIED'
   | 'REJECTED'
   | 'CONFLICT'
@@ -40,7 +41,12 @@ export interface NativeBuildRecord {
 export interface ValidationEvidence {
   validationId: string;
   projectId: string;
+  candidateId?: string;
+  candidateHash?: string;
+  expectedRevision?: number;
   timestamp: string;
+  startedAt?: string;
+  completedAt?: string;
   framework: string;
   requestedFramework?: string;
   requestedFrameworkVersion?: string;

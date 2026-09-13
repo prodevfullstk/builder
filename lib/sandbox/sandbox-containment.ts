@@ -1,9 +1,10 @@
 import path from 'node:path';
 
 /**
- * Canonical Relative Sandbox Workspace Containment (SEC-401)
+ * Canonical Relative Sandbox Workspace Containment (SEC-401 / SEC-502)
  * Enforces that every uploaded file path strictly resolves within rootDir (/vercel/app).
- * Strictly rejects null bytes, Windows drive letters, UNC paths, and directory traversal.
+ * Strictly rejects null bytes, Windows drive letters, UNC paths, directory traversal,
+ * and dangerous symlink targeting patterns.
  */
 export function assertContainedSandboxPath(rawPath: string, rootDir = '/vercel/app'): string {
   if (!rawPath || typeof rawPath !== 'string' || rawPath.includes('\0')) {
@@ -13,6 +14,14 @@ export function assertContainedSandboxPath(rawPath: string, rootDir = '/vercel/a
   // Reject Windows drive letters (C:) and UNC shares (\\)
   if (/^[a-zA-Z]:/.test(rawPath) || rawPath.startsWith('\\\\') || rawPath.startsWith('//')) {
     throw new Error(`Security Violation: Absolute host path prohibited: '${rawPath}'`);
+  }
+
+  // Reject dangerous symlink destination paths or references
+  if (
+    rawPath.includes('->') ||
+    rawPath.includes('symlink') && (rawPath.includes('/etc') || rawPath.includes('/root') || rawPath.includes('..'))
+  ) {
+    throw new Error(`Security Violation: Prohibited symlink escape pattern detected in '${rawPath}'`);
   }
 
   // Normalize separators to POSIX

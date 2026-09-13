@@ -71,7 +71,7 @@ export function registerServerProject(project: AuthoritativeProject): void {
     throw new Error('Project owner_id is required.');
   }
   const existing = serverProjectRegistry.get(project.id);
-  const revision = (existing?.revision || 0) + 1;
+  const revision = project.revision !== undefined ? project.revision : (existing?.revision || 0) + 1;
   serverProjectRegistry.set(project.id, {
     ...project,
     revision,

@@ -153,6 +153,9 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
     if (!aiPrompt.trim() || !activeFile || aiLoading) return;
     setAiLoading(true);
     setAiError(null);
+    // CONC-501: Capture baseline revision before starting asynchronous AI edit
+    const baselineRevision = useProjectStore.getState().revision || 1;
+
     try {
       const response = await fetch('/api/agent', {
         method: 'POST',
@@ -216,7 +219,15 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
         return;
       }
 
-      // Transactional commit: candidate validation passed
+      // Concurrency Gate (CONC-501): Check workspace revision freshness before committing edit
+      const currentRevision = useProjectStore.getState().revision || 1;
+      if (currentRevision !== baselineRevision) {
+        setAiError('Conflict: Workspace files changed while this edit was generating. The edit was aborted.');
+        addLog(`[Monaco AI Edit Conflict] Stale edit rejected: Workspace revision changed from ${baselineRevision} to ${currentRevision}.`);
+        return;
+      }
+
+      // Transactional commit: candidate validation and revision freshness verified
       updateFile(activeFile, proposedContent);
       setAiPrompt('');
       setAiBarOpen(false);

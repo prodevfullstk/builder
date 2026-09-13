@@ -11,6 +11,8 @@ export interface RateLimitResult {
   limit: number;
   remaining: number;
   resetSeconds: number;
+  error?: string;
+  failClosed?: boolean;
 }
 
 interface WindowRecord {
@@ -83,18 +85,21 @@ export function resetRateLimitStore(): void {
 }
 
 /**
- * Asynchronously checks rate limit across distributed server instances (SEC-402)
+ * Asynchronously checks rate limit across distributed server instances (SEC-402 / SEC-501)
  * Primary: PostgreSQL atomic stored function via Supabase REST RPC
- * Fallback: In-memory sliding-window counter
+ * In fail-closed mode (default for AI routes), failure to contact the distributed backend
+ * strictly rejects requests (HTTP 503) rather than falling back to per-instance memory.
  */
 export async function checkRateLimitDistributed(
   key: string,
   maxRequests: number,
-  windowMs: number = 3600_000
+  windowMs: number = 3600_000,
+  options?: { failClosed?: boolean }
 ): Promise<RateLimitResult> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const windowSeconds = Math.ceil(windowMs / 1000);
+  const failClosed = options?.failClosed ?? true;
 
   if (supabaseUrl && serviceKey) {
     try {
@@ -122,10 +127,21 @@ export async function checkRateLimitDistributed(
         };
       }
     } catch {
-      // Graceful fallback to local in-memory store
+      // Backend connectivity error
     }
   }
 
-  // Fallback to local in-memory rate limiter
+  // Security Invariant (SEC-501): Expensive AI routes MUST fail closed when distributed infrastructure is unreachable
+  if (failClosed) {
+    return {
+      allowed: false,
+      limit: maxRequests,
+      remaining: 0,
+      resetSeconds: windowSeconds,
+      error: 'Distributed rate limiting unavailable',
+    };
+  }
+
+  // Fallback to local in-memory rate limiter only for non-critical routes where explicitly permitted
   return checkRateLimit(key, maxRequests, windowMs);
 }

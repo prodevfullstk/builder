@@ -55,14 +55,18 @@ export async function POST(req: NextRequest) {
     const rateLimit = await checkRateLimitDistributed(rateLimitKey, maxRequests, 3600_000);
 
     if (!rateLimit.allowed) {
+      const isUnavailable = rateLimit.error === 'Distributed rate limiting unavailable';
+      const statusCode = isUnavailable ? 503 : 429;
       return new Response(
         JSON.stringify({
-          error: isDemo
+          error: isUnavailable
+            ? 'Rate limiting service is temporarily unavailable. Request rejected to prevent abuse.'
+            : isDemo
             ? 'Rate limit exceeded: Demo mode is limited to 10 generations per IP per hour. Please sign in to increase limits.'
             : 'Rate limit exceeded: You have reached the maximum of 60 requests per hour.',
         }),
         {
-          status: 429,
+          status: statusCode,
           headers: {
             'Content-Type': 'application/json',
             'Retry-After': String(rateLimit.resetSeconds),

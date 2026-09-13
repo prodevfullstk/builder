@@ -96,28 +96,8 @@ export const supabaseAuthHelper = {
       }),
     });
 
-    if (!response.ok) {
-      return fetch(`${SUPABASE_URL}/rest/v1/projects`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${accessToken}`,
-          Prefer: 'resolution=merge-duplicates',
-        },
-        body: JSON.stringify({
-          id: project.id,
-          user_id: userId,
-          name: project.name,
-          framework: project.framework,
-          files: project.files,
-          messages: project.messages,
-          revision: (project.revision || 1) + 1,
-          updated_at: new Date(project.updatedAt || Date.now()).toISOString(),
-        }),
-      });
-    }
-
+    // CONC-401 / CONC-502: Authoritative Database Compare-And-Swap (CAS)
+    // CAS failures or conflicts must NEVER fall back to last-write-wins (resolution=merge-duplicates)
     return response;
   },
 };

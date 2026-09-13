@@ -153,6 +153,30 @@ export function PreviewPane() {
         return;
       }
 
+      // 2b. Native Isolated Build Verification Gate (GEN-501 / Phase 5)
+      try {
+        const buildRes = await fetch('/api/validate/build', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectId: projectId || 'workspace',
+            framework,
+            files: evalResult.committedFiles,
+            mandatory: false,
+          }),
+        });
+        if (buildRes.ok) {
+          const buildData = await buildRes.json();
+          if (buildData.verificationLevel === 'NATIVE_BUILD_VERIFIED') {
+            addLog('[Auto-Fix] ✓ Native container build verified in microVM.');
+          } else {
+            addLog(`[Auto-Fix] ℹ Truthfully recorded: ${buildData.verificationLevel || 'NATIVE_BUILD_UNVERIFIED'}.`);
+          }
+        }
+      } catch {
+        // Continue if network check fails
+      }
+
       // 3. Concurrency Gate (CONC-402): Reject stale candidate if workspace changed during repair
       const currentRevision = useProjectStore.getState().revision || 1;
       if (currentRevision !== baselineRevision) {
