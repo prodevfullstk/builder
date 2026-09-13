@@ -15,6 +15,8 @@
  * Persistence / runtime / export
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
 import { Framework, ChatMessage } from '@/lib/store/project-store';
 import { ProjectSpec, ValidationEvidence } from '@/lib/validation/types';
 
@@ -77,8 +79,41 @@ export function registerServerProject(project: AuthoritativeProject): void {
   });
 }
 
+function getEvidenceDir(): string {
+  return path.join(process.cwd(), '.opendork', 'evidence');
+}
+
+function persistEvidenceToDisk(projectId: string, evidenceList: ValidationEvidence[]): void {
+  try {
+    const dir = getEvidenceDir();
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const safeId = projectId.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filePath = path.join(dir, `${safeId}.json`);
+    fs.writeFileSync(filePath, JSON.stringify(evidenceList, null, 2), 'utf8');
+  } catch (err) {
+    // Non-fatal logging if filesystem is read-only
+    console.warn('[ProjectAuthority] Failed to persist validation evidence to disk:', err);
+  }
+}
+
+function loadEvidenceFromDisk(projectId: string): ValidationEvidence[] {
+  try {
+    const safeId = projectId.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filePath = path.join(getEvidenceDir(), `${safeId}.json`);
+    if (fs.existsSync(filePath)) {
+      const data = fs.readFileSync(filePath, 'utf8');
+      return JSON.parse(data) as ValidationEvidence[];
+    }
+  } catch {
+    // Ignore read errors
+  }
+  return [];
+}
+
 /**
- * Record validation evidence into project audit history
+ * Record validation evidence into project audit history (REL-301 / P2-1)
  */
 export function recordValidationEvidence(projectId: string, evidence: ValidationEvidence): void {
   const project = serverProjectRegistry.get(projectId);
@@ -91,15 +126,23 @@ export function recordValidationEvidence(projectId: string, evidence: Validation
     if (project.validationHistory.length > 20) {
       project.validationHistory = project.validationHistory.slice(-20);
     }
+    persistEvidenceToDisk(projectId, project.validationHistory);
+  } else {
+    const history = loadEvidenceFromDisk(projectId);
+    history.push(evidence);
+    persistEvidenceToDisk(projectId, history.slice(-20));
   }
 }
 
 /**
- * Get validation audit trail for a project
+ * Get validation audit trail for a project (REL-301 / P2-1)
  */
 export function getValidationHistory(projectId: string): ValidationEvidence[] {
   const project = serverProjectRegistry.get(projectId);
-  return project?.validationHistory || [];
+  if (project?.validationHistory && project.validationHistory.length > 0) {
+    return project.validationHistory;
+  }
+  return loadEvidenceFromDisk(projectId);
 }
 
 /**
@@ -135,7 +178,8 @@ export function listServerProjectsForOwner(ownerId: string): AuthoritativeProjec
  */
 export async function verifyProjectOwnership(
   projectId: string | null | undefined,
-  authenticatedUserId: string
+  authenticatedUserId: string,
+  authMode?: 'real' | 'demo'
 ): Promise<OwnershipVerificationResult> {
   // 1. Missing project ID validation
   if (!projectId || typeof projectId !== 'string' || !projectId.trim()) {
@@ -158,8 +202,19 @@ export async function verifyProjectOwnership(
     };
   }
 
-  // Allow demo identities access to the seeded system-demo project
-  const isDemoAuthorized = (authenticatedUserId === 'demo-user' || authenticatedUserId === 'system-demo') && project.owner_id === 'system-demo';
+  // Security Invariant (SEC-301): Demo identities can NEVER access production projects
+  const isDemoUser = authMode === 'demo' || authenticatedUserId === 'demo-user' || authenticatedUserId === 'system-demo';
+  const isDemoProject = project.owner_id === 'system-demo' || project.owner_id === 'demo-user';
+
+  if (isDemoUser && !isDemoProject) {
+    return {
+      authorized: false,
+      error: 'Forbidden: Demo identities cannot access production projects.',
+      status: 403,
+    };
+  }
+
+  const isDemoAuthorized = isDemoUser && isDemoProject;
 
   // 3. Ownership verification
   if (project.owner_id !== authenticatedUserId && !isDemoAuthorized) {

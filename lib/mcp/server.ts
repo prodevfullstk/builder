@@ -279,7 +279,9 @@ async function executeMcpTool(
   // 2. Project-scoped tools execution
   switch (name) {
     case "list_projects": {
-      const projects = listServerProjectsForOwner(context!.userId!).map((p) => ({
+      const isDemo = context?.authMode === 'demo' || context?.userId === 'demo-user';
+      const ownerId = isDemo ? 'demo-user' : context!.userId!;
+      const projects = listServerProjectsForOwner(ownerId).map((p) => ({
         id: p.id,
         name: p.name,
         framework: p.framework,
@@ -317,7 +319,7 @@ async function executeMcpTool(
     }
 
     case "get_project": {
-      const check = await verifyProjectOwnership(args.projectId, context!.userId!);
+      const check = await verifyProjectOwnership(args.projectId, context!.userId!, context?.authMode);
       if (!check.authorized) {
         return makeError(
           check.status === 400 ? -32602 : check.status === 404 ? -32601 : -32003,
@@ -338,7 +340,7 @@ async function executeMcpTool(
     }
 
     case "list_files": {
-      const check = await verifyProjectOwnership(args.projectId, context!.userId!);
+      const check = await verifyProjectOwnership(args.projectId, context!.userId!, context?.authMode);
       if (!check.authorized) {
         return makeError(
           check.status === 400 ? -32602 : check.status === 404 ? -32601 : -32003,
@@ -352,7 +354,7 @@ async function executeMcpTool(
     }
 
     case "get_file": {
-      const check = await verifyProjectOwnership(args.projectId, context!.userId!);
+      const check = await verifyProjectOwnership(args.projectId, context!.userId!, context?.authMode);
       if (!check.authorized) {
         return makeError(
           check.status === 400 ? -32602 : check.status === 404 ? -32601 : -32003,
@@ -380,7 +382,7 @@ async function executeMcpTool(
     }
 
     case "write_file": {
-      const check = await verifyProjectOwnership(args.projectId, context!.userId!);
+      const check = await verifyProjectOwnership(args.projectId, context!.userId!, context?.authMode);
       if (!check.authorized) {
         return makeError(
           check.status === 400 ? -32602 : check.status === 404 ? -32601 : -32003,
@@ -408,7 +410,7 @@ async function executeMcpTool(
     }
 
     case "edit_file": {
-      const check = await verifyProjectOwnership(args.projectId, context!.userId!);
+      const check = await verifyProjectOwnership(args.projectId, context!.userId!, context?.authMode);
       if (!check.authorized) {
         return makeError(
           check.status === 400 ? -32602 : check.status === 404 ? -32601 : -32003,
@@ -457,7 +459,7 @@ async function executeMcpTool(
     }
 
     case "delete_file": {
-      const check = await verifyProjectOwnership(args.projectId, context!.userId!);
+      const check = await verifyProjectOwnership(args.projectId, context!.userId!, context?.authMode);
       if (!check.authorized) {
         return makeError(
           check.status === 400 ? -32602 : check.status === 404 ? -32601 : -32003,
@@ -496,7 +498,7 @@ async function executeMcpTool(
     }
 
     case "audit_code": {
-      const check = await verifyProjectOwnership(args.projectId, context!.userId!);
+      const check = await verifyProjectOwnership(args.projectId, context!.userId!, context?.authMode);
       if (!check.authorized) {
         return makeError(
           check.status === 400 ? -32602 : check.status === 404 ? -32601 : -32003,

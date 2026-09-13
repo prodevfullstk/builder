@@ -59,6 +59,31 @@ const SECRET_PATTERNS: { name: string; regex: RegExp; severity: 'critical' | 'wa
     severity: 'warning',
   },
   {
+    name: 'Anthropic API Key',
+    regex: /\bsk-ant-[A-Za-z0-9_-]{32,}\b/g,
+    severity: 'critical',
+  },
+  {
+    name: 'Groq API Key',
+    regex: /\bgsk_[A-Za-z0-9_-]{32,}\b/g,
+    severity: 'critical',
+  },
+  {
+    name: 'GitHub Fine-Grained Personal Access Token',
+    regex: /\bgithub_pat_[A-Za-z0-9_]{40,}\b/g,
+    severity: 'critical',
+  },
+  {
+    name: 'Stripe Secret Key',
+    regex: /\b[rs]k_(?:live|test)_[A-Za-z0-9]{24,}\b/g,
+    severity: 'critical',
+  },
+  {
+    name: 'PostgreSQL Connection URI with Password',
+    regex: /postgres(?:ql)?:\/\/[^:]+:[^@]+@[^/]+\/[^\s"']+/gi,
+    severity: 'critical',
+  },
+  {
     name: 'Generic Hardcoded Secret/Token assignment',
     regex: /(?:api_key|apikey|secret_key|private_key|auth_token)s*[:=]s*['"][a-zA-Z0-9-_]{20,}['"]/gi,
     severity: 'warning',

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { generateInstantPreviewHtml } from '@/lib/preview/instant-preview-html';
 import { bundleProjectWithEsbuild } from '@/lib/preview/esbuild-compiler';
 
@@ -23,13 +23,26 @@ export function InstantPreview({
   onScreenshot,
   onEngineStatusChange,
 }: InstantPreviewProps) {
-  // Listen to preview iframe runtime/compilation errors + screenshots
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Listen to preview iframe runtime/compilation errors + screenshots with strict source validation
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'preview-error' && typeof event.data.error === 'string') {
-        onError?.(event.data.error);
+      // Source window validation: reject messages not originating from this preview iframe
+      if (iframeRef.current && event.source !== iframeRef.current.contentWindow) {
+        return;
       }
-      if (event.data?.type === 'preview-screenshot' && typeof event.data.dataUrl === 'string') {
+      if (!event.data || typeof event.data !== 'object') {
+        return;
+      }
+      if (event.data.type === 'preview-error' && typeof event.data.error === 'string') {
+        onError?.(event.data.error.slice(0, 1000));
+      }
+      if (
+        event.data.type === 'preview-screenshot' &&
+        typeof event.data.dataUrl === 'string' &&
+        event.data.dataUrl.startsWith('data:image/')
+      ) {
         onScreenshot?.(event.data.dataUrl);
       }
     };
@@ -89,11 +102,12 @@ export function InstantPreview({
 
   return (
     <iframe
+      ref={iframeRef}
       key={`${refreshNonce}-${esbuildHtml ? 'esbuild' : 'babel'}`}
       srcDoc={htmlContent}
       title="Instant App Preview"
       className={`w-full h-full border-none bg-white ${className}`}
-      sandbox="allow-scripts allow-same-origin allow-modals allow-forms allow-popups"
+      sandbox="allow-scripts allow-modals allow-forms allow-popups"
     />
   );
 }

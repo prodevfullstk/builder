@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Sandbox } from '@vercel/sandbox';
 import { generateInstantPreviewHtml } from '@/lib/preview/instant-preview-html';
 import { authenticateRequest } from '@/lib/auth/server-auth';
+import { verifyProjectOwnership, registerServerProject } from '@/lib/storage/project-authority';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -52,10 +53,44 @@ export async function POST(req: NextRequest) {
 
     // 2. Authentication Check
     const authResult = await authenticateRequest(req, { allowDemo: true });
-    if (authResult.error) {
+    if (authResult.error || !authResult.user) {
       return NextResponse.json(
-        { success: false, error: authResult.error },
-        { status: authResult.status }
+        { success: false, error: authResult.error || 'Unauthorized' },
+        { status: authResult.status || 401 }
+      );
+    }
+
+    // 2b. Project Ownership Check (SEC-304 / P1-3)
+    let ownership = await verifyProjectOwnership(
+      projectId,
+      authResult.user.id,
+      authResult.user.authMode
+    );
+
+    // If project does not exist yet and this is a start action with files,
+    // register it for the authenticated user so sandboxing can proceed
+    if (ownership.status === 404 && action === 'start' && Object.keys(files).length > 0) {
+      registerServerProject({
+        id: projectId.trim(),
+        owner_id: authResult.user.id,
+        name: projectId.trim(),
+        framework: (framework as any) || 'nextjs',
+        files,
+        messages: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      ownership = await verifyProjectOwnership(
+        projectId,
+        authResult.user.id,
+        authResult.user.authMode
+      );
+    }
+
+    if (!ownership.authorized) {
+      return NextResponse.json(
+        { success: false, error: ownership.error },
+        { status: ownership.status }
       );
     }
 
@@ -332,6 +367,69 @@ server.listen(3000, '0.0.0.0', () => {
   }
 }
 
+export async function GET(req: NextRequest) {
+  try {
+    const url = new URL(req.url);
+    const projectId = url.searchParams.get('projectId');
+
+    if (!projectId || !projectId.trim() || projectId === 'default') {
+      return NextResponse.json(
+        { success: false, error: "Validation Error: 'projectId' parameter is required." },
+        { status: 400 }
+      );
+    }
+
+    const authResult = await authenticateRequest(req, { allowDemo: true });
+    if (authResult.error || !authResult.user) {
+      return NextResponse.json(
+        { success: false, error: authResult.error || 'Unauthorized' },
+        { status: authResult.status || 401 }
+      );
+    }
+
+    // Project Ownership Check (SEC-304 / P1-3)
+    const ownership = await verifyProjectOwnership(
+      projectId,
+      authResult.user.id,
+      authResult.user.authMode
+    );
+    if (!ownership.authorized) {
+      return NextResponse.json(
+        { success: false, error: ownership.error },
+        { status: ownership.status }
+      );
+    }
+
+    const safeId = projectId
+      .replace(/[^a-zA-Z0-9-]/g, '')
+      .slice(0, 24)
+      .toLowerCase();
+    const sandboxName = `sbx-${safeId}`;
+
+    try {
+      const sandbox = await Sandbox.get({ name: sandboxName });
+      const previewUrl = sandbox.domain(3000);
+      return NextResponse.json({
+        success: true,
+        sandboxName,
+        previewUrl,
+        status: 'runtime_ready',
+      });
+    } catch {
+      return NextResponse.json({
+        success: true,
+        sandboxName,
+        status: 'stopped',
+      });
+    }
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error?.message || 'Failed to query sandbox' },
+      { status: 500 }
+    );
+  }
+}
+
 export async function DELETE(req: NextRequest) {
   try {
     const url = new URL(req.url);
@@ -345,10 +443,23 @@ export async function DELETE(req: NextRequest) {
     }
 
     const authResult = await authenticateRequest(req, { allowDemo: true });
-    if (authResult.error) {
+    if (authResult.error || !authResult.user) {
       return NextResponse.json(
-        { success: false, error: authResult.error },
-        { status: authResult.status }
+        { success: false, error: authResult.error || 'Unauthorized' },
+        { status: authResult.status || 401 }
+      );
+    }
+
+    // Project Ownership Check (SEC-304 / P1-3)
+    const ownership = await verifyProjectOwnership(
+      projectId,
+      authResult.user.id,
+      authResult.user.authMode
+    );
+    if (!ownership.authorized) {
+      return NextResponse.json(
+        { success: false, error: ownership.error },
+        { status: ownership.status }
       );
     }
 

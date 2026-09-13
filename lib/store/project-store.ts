@@ -37,6 +37,7 @@ export interface ProjectState {
   framework: Framework;
   frameworkVersion: string;
   projectSpec: ProjectSpec | null;
+  revision: number; // Monotonically increasing revision for optimistic concurrency (GEN-302)
   
   // Project Identity & Persistence
   projectId: string | null;
@@ -124,6 +125,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   framework: 'nextjs',
   frameworkVersion: '15.1.7',
   projectSpec: null,
+  revision: 1,
   mode: 'split',
   status: 'idle',
   statusMessage: '',
@@ -143,7 +145,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   activeSteps: [],
   logs: ['[System] Workspace ready.'],
 
-  setFiles: (files) => set({ files }),
+  setFiles: (files) => set((state) => ({ files, revision: (state.revision || 0) + 1 })),
   setStreamingFile: (streamingFile) => set({ streamingFile }),
   setIsStreaming: (isStreaming) => set({ isStreaming }),
   setActiveSteps: (activeSteps) => set({ activeSteps }),
@@ -166,6 +168,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
         ...state.files,
         [path]: content,
       },
+      revision: (state.revision || 0) + 1,
     })),
 
   editFile: (path, targetContent, replacementContent) => {
@@ -182,6 +185,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
             [path]: current.replace(targetContent, replacementContent),
           },
           activeFile: path,
+          revision: (state.revision || 0) + 1,
         };
       }
 
@@ -195,6 +199,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
             [path]: current.replace(trimmedTarget, replacementContent.trim()),
           },
           activeFile: path,
+          revision: (state.revision || 0) + 1,
         };
       }
 
@@ -210,6 +215,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
         [path]: content,
       },
       activeFile: path,
+      revision: (state.revision || 0) + 1,
     })),
 
   deleteFile: (path) =>
@@ -221,7 +227,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
         state.activeFile === path
           ? remainingPaths[0] || ''
           : state.activeFile;
-      return { files: newFiles, activeFile: nextActive };
+      return { files: newFiles, activeFile: nextActive, revision: (state.revision || 0) + 1 };
     }),
 
   setActiveFile: (activeFile) => set({ activeFile }),
@@ -330,6 +336,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
       runtimeError: null,
       autoFixAttempts: 0,
       activeSteps: [],
+      revision: (project as any).revision || 1,
       status: 'ready',
       statusMessage: 'Project loaded',
     }),

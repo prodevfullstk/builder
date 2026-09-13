@@ -43,3 +43,6 @@ skills-main/
 # pnpm
 .pnpm-store
 # Keep .npmrc for Vercel pnpm config
+
+# runtime data
+.opendork/

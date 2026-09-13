@@ -112,7 +112,9 @@ export async function authenticateRequest(
 
   if (isDemoHeader) {
     if (options.allowDemo) {
-      const demoId = getHeader('X-Demo-User-Id') || 'demo-user';
+      // Security Invariant (SEC-301): Demo identity is strictly server-defined.
+      // Client-controlled headers (e.g. X-Demo-User-Id) are NEVER trusted to assign identity.
+      const demoId = 'demo-user';
       return {
         user: {
           id: demoId,

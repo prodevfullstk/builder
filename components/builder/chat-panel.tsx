@@ -237,6 +237,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
 
     // ── CONVERSATION MODE ─────────────────────────────────────
     if (!isBuild) {
+      const baselineRevision = useProjectStore.getState().revision || 1;
       setStatus('generating', 'Thinking...');
       // ISSUE9 fix: stream chat replies token-by-token
       let streamContent = '';
@@ -300,6 +301,12 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
           });
 
           if (evalResult.accepted) {
+            const currentRevision = useProjectStore.getState().revision || 1;
+            if (currentRevision !== baselineRevision) {
+              addLog(`[Concurrency] ✕ Stale candidate rejected in chat mode: Workspace revision changed from ${baselineRevision} to ${currentRevision} during generation.`);
+              setStatus('ready', 'Concurrent modification detected');
+              return;
+            }
             setFiles(evalResult.committedFiles);
             const entry = effectiveFramework === 'vite'
               ? (evalResult.committedFiles['src/App.tsx'] ? 'src/App.tsx' : evalResult.committedFiles['src/App.jsx'] ? 'src/App.jsx' : Object.keys(evalResult.committedFiles)[0])
@@ -347,6 +354,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
 
     // ── BUILD / AUTO-FIX MODE ─────────────────────────────────
     const baselineFiles = { ...files };
+    const baselineRevision = useProjectStore.getState().revision || 1;
     setStatus('generating', isFixRequest ? 'AI is repairing the issue...' : 'AI is building your project...');
     setIsStreaming(true);
     addLog(`[AI] ${isFixRequest ? 'Repairing' : 'Building'}: "${query.slice(0, 60)}..."`);
@@ -621,9 +629,10 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         }
       }
 
-      // ── TRANSACTIONAL COMMIT GATE ──
-      // If compilation failed and could not be healed, do NOT commit corrupt files to workspace
-      if (!compilationPassed && !isFixRequest) {
+      // ── TRANSACTIONAL COMMIT GATE (GEN-301) ──
+      // Security Invariant: If compilation failed and could not be healed,
+      // do NOT commit corrupt files to workspace under any circumstance, including fix requests.
+      if (!compilationPassed) {
         setIsStreaming(false);
         setStreamingFile(null);
         setStatus('error', 'Virtual build verification failed');
@@ -637,7 +646,23 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         return;
       }
 
-      // Validation AND compilation passed: Atomically commit to authoritative project store
+      // ── OPTIMISTIC CONCURRENCY CHECK (GEN-302) ──
+      const currentRevision = useProjectStore.getState().revision || 1;
+      if (currentRevision !== baselineRevision) {
+        setIsStreaming(false);
+        setStreamingFile(null);
+        setStatus('ready', 'Concurrent modification detected');
+        addLog(`[Concurrency] ✕ Stale candidate rejected: Workspace revision changed from ${baselineRevision} to ${currentRevision} during generation.`);
+        addMessage({
+          role: 'assistant',
+          content: '⚠️ **Concurrent Modification Detected:** Your workspace files were modified while this AI generation was running. To prevent destroying your newer edits, this candidate was not applied. Your current files remain preserved.',
+          steps: currentSteps,
+          showPreview: true,
+        });
+        return;
+      }
+
+      // Validation AND compilation passed, revision intact: Atomically commit to authoritative project store
       setFiles(verifiedFiles);
       const entryFile = effectiveFramework === 'vite'
         ? (verifiedFiles['src/App.tsx'] ? 'src/App.tsx' : verifiedFiles['src/App.jsx'] ? 'src/App.jsx' : Object.keys(verifiedFiles)[0])

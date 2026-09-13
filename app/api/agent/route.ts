@@ -2,6 +2,15 @@ import { NextRequest } from "next/server";
 import { createGeminiStream } from "@/lib/ai/gemini-stream";
 import { getSystemPrompt } from "@/lib/ai/prompt-templates";
 import { authenticateRequest } from "@/lib/auth/server-auth";
+import { checkRateLimit } from "@/lib/auth/rate-limiter";
+
+function getClientIp(req: NextRequest): string {
+  const forwarded = req.headers.get('x-forwarded-for');
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.headers.get('x-real-ip') || '127.0.0.1';
+}
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -32,11 +41,37 @@ export async function POST(req: NextRequest) {
     // Authentication gate: requires real Supabase token or explicit demo mode.
     // Blocks anonymous LLM abuse from unauthenticated IPs.
     const authResult = await authenticateRequest(req, { allowDemo: true });
-    if (authResult.error) {
-      return new Response(JSON.stringify({ error: authResult.error }), {
-        status: authResult.status,
+    if (authResult.error || !authResult.user) {
+      return new Response(JSON.stringify({ error: authResult.error || "Unauthorized" }), {
+        status: authResult.status || 401,
         headers: { "Content-Type": "application/json" },
       });
+    }
+
+    // Rate Limiting Gate (SEC-305 / P1-6)
+    const isDemo = authResult.user.authMode === 'demo';
+    const rateLimitKey = isDemo ? `demo:${getClientIp(req)}` : `user:${authResult.user.id}`;
+    const maxRequests = isDemo ? 10 : 60;
+    const rateLimit = checkRateLimit(rateLimitKey, maxRequests, 3600_000);
+
+    if (!rateLimit.allowed) {
+      return new Response(
+        JSON.stringify({
+          error: isDemo
+            ? 'Rate limit exceeded: Demo mode is limited to 10 generations per IP per hour. Please sign in to increase limits.'
+            : 'Rate limit exceeded: You have reached the maximum of 60 requests per hour.',
+        }),
+        {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'Retry-After': String(rateLimit.resetSeconds),
+            'X-RateLimit-Limit': String(rateLimit.limit),
+            'X-RateLimit-Remaining': String(rateLimit.remaining),
+            'X-RateLimit-Reset': String(rateLimit.resetSeconds),
+          },
+        }
+      );
     }
 
     const systemPrompt = getSystemPrompt(framework, dbProvider, authProvider, mode, skills);

@@ -55,17 +55,18 @@ describe('Server Authentication & Token Validation', () => {
     assert.match(result.error || '', /Demo identities are not authorized/i);
   });
 
-  it('verifies demo identity is accepted when allowDemo is explicitly enabled', async () => {
+  it('verifies demo identity is accepted and strictly bound to deterministic demo-user (SEC-301)', async () => {
     const req = new Request('http://localhost/api/test', {
       headers: {
         'X-Auth-Mode': 'demo',
-        'X-Demo-User-Id': 'demo-test-123',
+        'X-Demo-User-Id': 'attacker-spoofed-id',
       },
     });
 
     const result = await authenticateRequest(req, { allowDemo: true });
     assert.ok(result.user);
-    assert.strictEqual(result.user?.id, 'demo-test-123');
+    // Security Invariant (SEC-301): Client cannot spoof arbitrary user ID via header
+    assert.strictEqual(result.user?.id, 'demo-user');
     assert.strictEqual(result.user?.authMode, 'demo');
   });
 

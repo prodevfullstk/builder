@@ -17,7 +17,7 @@ export function synthesizeProjectRequirements(
   const cleanPrompt = prompt.trim();
   const lower = cleanPrompt.toLowerCase();
 
-  // Resolve default framework versions
+  // Resolve default framework versions or parse explicit version from prompt
   let frameworkVersion = '^15.0.0';
   if (framework === 'vite' || (framework as string) === 'vite-react') {
     frameworkVersion = '^5.0.0';
@@ -25,6 +25,24 @@ export function synthesizeProjectRequirements(
     frameworkVersion = '^4.0.0';
   } else if (framework === 'node') {
     frameworkVersion = '^20.0.0';
+  }
+
+  // Parse explicit framework versions requested in user prompt (P2-3)
+  const nextMatch = cleanPrompt.match(/next(?:\.js)?\s*v?([0-9]+(?:\.[0-9]+)?)/i);
+  if (framework === 'nextjs' && nextMatch) {
+    frameworkVersion = nextMatch[1].includes('.') ? `^${nextMatch[1]}` : `^${nextMatch[1]}.0.0`;
+  }
+  const viteMatch = cleanPrompt.match(/vite\s*v?([0-9]+(?:\.[0-9]+)?)/i);
+  if ((framework === 'vite' || (framework as string) === 'vite-react') && viteMatch) {
+    frameworkVersion = viteMatch[1].includes('.') ? `^${viteMatch[1]}` : `^${viteMatch[1]}.0.0`;
+  }
+  const astroMatch = cleanPrompt.match(/astro\s*v?([0-9]+(?:\.[0-9]+)?)/i);
+  if (framework === 'astro' && astroMatch) {
+    frameworkVersion = astroMatch[1].includes('.') ? `^${astroMatch[1]}` : `^${astroMatch[1]}.0.0`;
+  }
+  const nodeMatch = cleanPrompt.match(/node(?:\.js)?\s*v?([0-9]+(?:\.[0-9]+)?)/i);
+  if (framework === 'node' && nodeMatch) {
+    frameworkVersion = nodeMatch[1].includes('.') ? `^${nodeMatch[1]}` : `^${nodeMatch[1]}.0.0`;
   }
 
   // Detect feature intents

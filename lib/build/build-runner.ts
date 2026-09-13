@@ -37,13 +37,79 @@ export interface BuildRunner {
 }
 
 /**
- * Executes a child process with a timeout, capturing stdout, stderr, and exit code.
+ * Terminates a process and its child process tree cross-platform.
+ */
+function killProcessTree(pid: number | undefined): void {
+  if (!pid) return;
+  try {
+    if (process.platform === 'win32') {
+      spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' });
+    } else {
+      process.kill(-pid, 'SIGKILL');
+    }
+  } catch {
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {}
+  }
+}
+
+/**
+ * Builds a strictly sanitized environment allowlist.
+ * Never passes through host application secrets, database URLs, or API keys.
+ */
+export function getSafeChildEnvironment(extraEnv?: Record<string, string>): NodeJS.ProcessEnv {
+  const safeEnv: NodeJS.ProcessEnv = {
+    PATH: process.env.PATH || '',
+    SYSTEMROOT: process.env.SYSTEMROOT || '',
+    WINDIR: process.env.WINDIR || '',
+    APPDATA: process.env.APPDATA || '',
+    LOCALAPPDATA: process.env.LOCALAPPDATA || '',
+    HOME: os.tmpdir(),
+    USERPROFILE: os.tmpdir(),
+    TMPDIR: os.tmpdir(),
+    TEMP: os.tmpdir(),
+    TMP: os.tmpdir(),
+    CI: 'true',
+    NODE_ENV: 'development',
+    ...(extraEnv || {}),
+  };
+
+  // Explicit blacklist guard: assert that no sensitive credentials exist
+  const SENSITIVE_KEYS = [
+    'DATABASE_URL',
+    'SUPABASE_SERVICE_ROLE_KEY',
+    'SUPABASE_ANON_KEY',
+    'NEXT_PUBLIC_SUPABASE_URL',
+    'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+    'GROQ_API_KEY',
+    'GEMINI_API_KEY',
+    'GOOGLE_API_KEY',
+    'OPENAI_API_KEY',
+    'ANTHROPIC_API_KEY',
+    'VERCEL_TOKEN',
+    'VERCEL_PROJECT_ID',
+    'VERCEL_SANDBOX_TOKEN',
+    'GITHUB_TOKEN',
+  ];
+
+  for (const key of SENSITIVE_KEYS) {
+    delete safeEnv[key];
+  }
+
+  return safeEnv;
+}
+
+/**
+ * Executes a child process with strict environment isolation, timeout enforcement,
+ * and process-tree termination.
  */
 function runCommand(
   cmd: string,
   args: string[],
   cwd: string,
-  timeoutMs: number
+  timeoutMs: number,
+  extraEnv?: Record<string, string>
 ): Promise<BuildResult> {
   const startTime = Date.now();
   return new Promise((resolve) => {
@@ -51,19 +117,16 @@ function runCommand(
     let stderr = '';
     let timedOut = false;
 
-    // Use shell on Windows for npm/pnpm .cmd resolution
     const isWindows = process.platform === 'win32';
     const child = spawn(cmd, args, {
       cwd,
       shell: isWindows,
-      env: { ...process.env, CI: 'true' },
+      env: getSafeChildEnvironment(extraEnv),
     });
 
     const timer = setTimeout(() => {
       timedOut = true;
-      try {
-        child.kill('SIGTERM');
-      } catch {}
+      killProcessTree(child.pid);
     }, timeoutMs);
 
     child.stdout?.on('data', (data) => {
@@ -116,22 +179,54 @@ function runCommand(
 }
 
 /**
- * LocalBuildRunner executes real native build verification in a clean temporary directory.
+ * LocalBuildRunner executes real build verification in a clean temporary directory.
+ * Marked STRICTLY development-only: refuses to run in production mode (SEC-303).
  */
 export class LocalBuildRunner implements BuildRunner {
   readonly name = 'LocalBuildRunner';
   private tempDir: string | null = null;
   private runningChild: any = null;
 
+  private assertEnvironment(): void {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'Security Violation: LocalBuildRunner is disabled in production. Bare-host execution of untrusted generated projects is strictly prohibited.'
+      );
+    }
+  }
+
   async prepare(files: Record<string, string>): Promise<void> {
+    this.assertEnvironment();
     const id = Math.random().toString(36).substring(2, 10);
     this.tempDir = path.join(os.tmpdir(), `opendrok-build-${id}`);
     await fs.mkdir(this.tempDir, { recursive: true });
 
+    const root = path.resolve(this.tempDir);
+
     for (const [filePath, content] of Object.entries(files)) {
-      const fullPath = path.join(this.tempDir, filePath);
-      await fs.mkdir(path.dirname(fullPath), { recursive: true });
-      await fs.writeFile(fullPath, content, 'utf-8');
+      // Security Invariant (SEC-303): Canonical relative path containment check
+      if (
+        filePath.includes('\0') ||
+        /^[a-zA-Z]:/.test(filePath) ||
+        filePath.startsWith('\\\\') ||
+        filePath.startsWith('//')
+      ) {
+        throw new Error(`Path traversal attempt detected: ${filePath}`);
+      }
+
+      const target = path.resolve(root, filePath);
+      const relative = path.relative(root, target);
+
+      if (
+        relative === '..' ||
+        relative.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(relative)
+      ) {
+        throw new Error(`Path traversal attempt detected: ${filePath}`);
+      }
+
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, content, 'utf-8');
     }
   }
 
@@ -140,16 +235,20 @@ export class LocalBuildRunner implements BuildRunner {
   }
 
   async install(timeoutMs = 60000): Promise<BuildResult> {
+    this.assertEnvironment();
     if (!this.tempDir) throw new Error('Runner not prepared. Call prepare() first.');
-    return runCommand('pnpm', ['install', '--prefer-offline'], this.tempDir, timeoutMs);
+    // Security Invariant (SEC-303): --ignore-scripts is mandatory to prevent malicious lifecycle execution
+    return runCommand('pnpm', ['install', '--prefer-offline', '--ignore-scripts'], this.tempDir, timeoutMs);
   }
 
   async build(timeoutMs = 60000): Promise<BuildResult> {
+    this.assertEnvironment();
     if (!this.tempDir) throw new Error('Runner not prepared. Call prepare() first.');
     return runCommand('pnpm', ['build'], this.tempDir, timeoutMs);
   }
 
   async start(port = 3001, timeoutMs = 15000): Promise<RunningServer> {
+    this.assertEnvironment();
     if (!this.tempDir) throw new Error('Runner not prepared. Call prepare() first.');
     const startTime = Date.now();
     const url = `http://127.0.0.1:${port}`;
@@ -158,7 +257,7 @@ export class LocalBuildRunner implements BuildRunner {
     const child = spawn('pnpm', ['start', '--port', String(port)], {
       cwd: this.tempDir,
       shell: isWindows,
-      env: { ...process.env, PORT: String(port) },
+      env: getSafeChildEnvironment({ PORT: String(port) }),
     });
     this.runningChild = child;
 
@@ -177,9 +276,7 @@ export class LocalBuildRunner implements BuildRunner {
 
     const stop = async () => {
       if (this.runningChild) {
-        try {
-          this.runningChild.kill('SIGTERM');
-        } catch {}
+        killProcessTree(this.runningChild.pid);
         this.runningChild = null;
       }
     };
@@ -216,9 +313,7 @@ export class LocalBuildRunner implements BuildRunner {
 
   async cleanup(): Promise<void> {
     if (this.runningChild) {
-      try {
-        this.runningChild.kill('SIGTERM');
-      } catch {}
+      killProcessTree(this.runningChild.pid);
       this.runningChild = null;
     }
     if (this.tempDir) {
@@ -231,7 +326,8 @@ export class LocalBuildRunner implements BuildRunner {
 }
 
 /**
- * VercelSandboxRunner provides integration with Vercel or reports explicit unavailable status.
+ * VercelSandboxRunner provides integration with Vercel Sandbox or truthfully reports
+ * unavailable status. Production fails closed if credentials are not configured.
  */
 export class VercelSandboxRunner implements BuildRunner {
   readonly name = 'VercelSandboxRunner';
@@ -255,7 +351,6 @@ export class VercelSandboxRunner implements BuildRunner {
         error: 'Credentials Missing',
       };
     }
-    // Remote install happens during deployment
     return {
       success: true,
       exitCode: 0,
@@ -276,7 +371,6 @@ export class VercelSandboxRunner implements BuildRunner {
         error: 'Credentials Missing',
       };
     }
-    // Remote build
     return {
       success: true,
       exitCode: 0,
