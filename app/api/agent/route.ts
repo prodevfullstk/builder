@@ -135,13 +135,19 @@ export async function POST(req: NextRequest) {
     let userContent = message;
 
     if (mode === "edit" && activeFile && files[activeFile]) {
+      const otherSnippets = retrievalContext.retrievedSnippets
+        .filter((s) => s.path !== activeFile)
+        .map((s) => `\`\`\`${s.path} (${s.relevanceReason})\n${s.content}\n\`\`\``)
+        .join("\n\n");
+      const workspaceContext = otherSnippets ? `\n\nRELATED WORKSPACE CONTEXT:\n${otherSnippets}\n` : '';
+
       userContent = `Current file: ${activeFile}
 
 File content:
 \`\`\`
 ${files[activeFile].slice(0, 8000)}
 \`\`\`
-
+${workspaceContext}
 User instruction: ${message}`;
     } else if (mode === "visual-fix" || intent.action === 'VISUAL_EDIT' || intent.action === 'VISUAL_RECREATE') {
       const snippets = retrievalContext.retrievedSnippets

@@ -163,7 +163,7 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
         body: JSON.stringify({
           message: aiPrompt.trim(),
           activeFile,
-          files: { [activeFile]: currentContent },
+          files: { ...files, [activeFile]: currentContent },
           framework,
           dbProvider,
           authProvider,
