@@ -24,9 +24,17 @@ export type VerificationLevel =
   | 'CONFLICT'
   | 'VERIFICATION_UNAVAILABLE';
 
+export type NativeBuildStatus =
+  | 'passed'
+  | 'failed'
+  | 'unavailable'
+  | 'not_run'
+  | 'stale'
+  | 'invalid';
+
 export interface NativeBuildRecord {
   attempted: boolean;
-  status: 'passed' | 'failed' | 'unavailable';
+  status: NativeBuildStatus;
   framework: string;
   runner: string;
   environment: 'vercel_sandbox' | 'none';
@@ -36,12 +44,18 @@ export interface NativeBuildRecord {
   stdoutSummary?: string;
   stderrSummary?: string;
   smokeTestPassed?: boolean;
+  candidateHash?: string;
+  projectId?: string;
+  revision?: number;
+  timestamp?: number | string;
+  buildOutput?: string;
 }
 
 export interface ValidationEvidence {
   validationId: string;
   projectId: string;
   candidateId?: string;
+  candidateTimestamp?: string;
   intentId?: string;
   candidateHash?: string;
   baselineRevision?: number;

@@ -1,4 +1,4 @@
-﻿import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -54,6 +54,13 @@ describe('Antigravity Phase 5 — Production Certification Hardening', () => {
           candidateHash,
           timestamp: new Date().toISOString(),
           framework: 'nextjs',
+          nativeBuild: {
+            attempted: true,
+            status: 'passed',
+            framework: 'nextjs',
+            runner: 'microvm_sandbox',
+            environment: 'vercel_sandbox',
+          },
           checks: [{ name: 'all_passed', status: 'passed' }],
           accepted: true,
           diagnostics: [],
@@ -148,6 +155,13 @@ describe('Antigravity Phase 5 — Production Certification Hardening', () => {
           candidateHash,
           timestamp: new Date().toISOString(),
           framework: 'nextjs',
+          nativeBuild: {
+            attempted: true,
+            status: 'passed',
+            framework: 'nextjs',
+            runner: 'microvm_sandbox',
+            environment: 'vercel_sandbox',
+          },
           checks: [],
           accepted: true,
           diagnostics: [],

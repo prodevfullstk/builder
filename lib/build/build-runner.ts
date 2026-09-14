@@ -506,3 +506,234 @@ export class VercelSandboxRunner implements BuildRunner {
     }
   }
 }
+
+export function getBuildRunner(): BuildRunner {
+  if (process.env.VERCEL_TOKEN && (process.env.VERCEL_PROJECT_ID || process.env.VERCEL_TEAM_ID)) {
+    return new VercelSandboxRunner();
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    return new LocalBuildRunner();
+  }
+  throw new Error('No supported build runner available in production environment without Vercel Sandbox credentials.');
+}
+
+export interface RealRuntimeEvidence {
+  evidenceId: string;
+  projectId: string;
+  revision: number;
+  candidateHash: string;
+  framework: string;
+  command: string;
+  exitStatus: number;
+  stdoutSummary: string;
+  stderrSummary: string;
+  startupStatus: 'ready' | 'failed' | 'timeout';
+  url: string;
+  port: number;
+  httpStatus: number;
+  healthy: boolean;
+  timestamp: string;
+  durationMs: number;
+  processTerminated: boolean;
+  sandboxCleaned: boolean;
+}
+
+export async function executeRealRuntimeVerification(params: {
+  files: Record<string, string>;
+  framework: string;
+  projectId: string;
+  revision: number;
+  candidateHash: string;
+  port?: number;
+  runner?: BuildRunner;
+}): Promise<RealRuntimeEvidence> {
+  const {
+    files,
+    framework,
+    projectId,
+    revision,
+    candidateHash,
+    port = 3001,
+  } = params;
+
+  const startTime = Date.now();
+  const evidenceId = 'ev_rt_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 8);
+  const timestamp = new Date().toISOString();
+
+  let runner: BuildRunner;
+  try {
+    runner = params.runner || getBuildRunner();
+  } catch (err: any) {
+    return {
+      evidenceId,
+      projectId,
+      revision,
+      candidateHash,
+      framework,
+      command: 'none',
+      exitStatus: 1,
+      stdoutSummary: '',
+      stderrSummary: err?.message || 'Runner unavailable',
+      startupStatus: 'failed',
+      url: '',
+      port,
+      httpStatus: 503,
+      healthy: false,
+      timestamp,
+      durationMs: Date.now() - startTime,
+      processTerminated: true,
+      sandboxCleaned: true,
+    };
+  }
+
+  let processTerminated = false;
+  let sandboxCleaned = false;
+
+  try {
+    // 1. prepare project
+    await runner.prepare(files);
+
+    // 2. install dependencies
+    const installRes = await runner.install(90_000);
+    if (!installRes.success) {
+      return {
+        evidenceId,
+        projectId,
+        revision,
+        candidateHash,
+        framework,
+        command: installRes.command || 'install',
+        exitStatus: installRes.exitCode,
+        stdoutSummary: (installRes.stdout || '').slice(-300),
+        stderrSummary: (installRes.stderr || '').slice(-300),
+        startupStatus: 'failed',
+        url: '',
+        port,
+        httpStatus: 500,
+        healthy: false,
+        timestamp,
+        durationMs: Date.now() - startTime,
+        processTerminated: true,
+        sandboxCleaned: false,
+      };
+    }
+
+    // 3. execute native build
+    const buildRes = await runner.build(90_000);
+    if (!buildRes.success) {
+      return {
+        evidenceId,
+        projectId,
+        revision,
+        candidateHash,
+        framework,
+        command: buildRes.command || 'build',
+        exitStatus: buildRes.exitCode,
+        stdoutSummary: (buildRes.stdout || '').slice(-300),
+        stderrSummary: (buildRes.stderr || '').slice(-300),
+        startupStatus: 'failed',
+        url: '',
+        port,
+        httpStatus: 500,
+        healthy: false,
+        timestamp,
+        durationMs: Date.now() - startTime,
+        processTerminated: true,
+        sandboxCleaned: false,
+      };
+    }
+
+    // 4. start the generated application using real start command
+    const runningServer = await runner.start(port, 25_000);
+
+    // 5 & 6. HTTP smoke verification
+    const smokeRes = await runner.smokeTest(runningServer.url, 10_000);
+
+    // 8. terminate process
+    await runningServer.stop();
+    processTerminated = true;
+
+    // 9. cleanup sandbox
+    await runner.cleanup();
+    sandboxCleaned = true;
+
+    return {
+      evidenceId,
+      projectId,
+      revision,
+      candidateHash,
+      framework,
+      command: `${framework} production start`,
+      exitStatus: smokeRes.success ? 0 : 1,
+      stdoutSummary: (buildRes.stdout || '').slice(-200),
+      stderrSummary: smokeRes.error || '',
+      startupStatus: smokeRes.success ? 'ready' : 'failed',
+      url: runningServer.url,
+      port,
+      httpStatus: smokeRes.statusCode || (smokeRes.success ? 200 : 500),
+      healthy: smokeRes.success,
+      timestamp,
+      durationMs: Date.now() - startTime,
+      processTerminated,
+      sandboxCleaned,
+    };
+  } catch (err: any) {
+    try {
+      await runner.cleanup();
+      sandboxCleaned = true;
+    } catch {}
+
+    return {
+      evidenceId,
+      projectId,
+      revision,
+      candidateHash,
+      framework,
+      command: `${framework} runtime execution`,
+      exitStatus: 1,
+      stdoutSummary: '',
+      stderrSummary: err?.message || 'Runtime execution threw error',
+      startupStatus: 'failed',
+      url: '',
+      port,
+      httpStatus: 500,
+      healthy: false,
+      timestamp,
+      durationMs: Date.now() - startTime,
+      processTerminated,
+      sandboxCleaned,
+    };
+  }
+}
+
+export function validateRuntimeEvidenceIntegrity(
+  evidence: RealRuntimeEvidence,
+  expected: { candidateHash: string; projectId: string; revision: number; framework: string }
+): { valid: boolean; error?: string } {
+  if (!evidence) {
+    return { valid: false, error: 'Runtime evidence is missing' };
+  }
+  if (!evidence.evidenceId || !evidence.evidenceId.startsWith('ev_rt_')) {
+    return { valid: false, error: 'Invalid or forged runtime evidence identifier' };
+  }
+  if (!evidence.healthy || evidence.httpStatus < 200 || evidence.httpStatus >= 400) {
+    return { valid: false, error: `Runtime HTTP smoke check failed (status: ${evidence.httpStatus})` };
+  }
+  if (evidence.candidateHash !== expected.candidateHash) {
+    return { valid: false, error: `Candidate hash mismatch on runtime evidence (expected '${expected.candidateHash}', got '${evidence.candidateHash}')` };
+  }
+  if (evidence.projectId !== expected.projectId) {
+    return { valid: false, error: `Project ID mismatch on runtime evidence (expected '${expected.projectId}', got '${evidence.projectId}')` };
+  }
+  if (evidence.revision !== expected.revision) {
+    return { valid: false, error: `Revision mismatch on runtime evidence (expected ${expected.revision}, got ${evidence.revision})` };
+  }
+  if (evidence.framework.toLowerCase() !== expected.framework.toLowerCase()) {
+    return { valid: false, error: `Framework mismatch on runtime evidence (expected '${expected.framework}', got '${evidence.framework}')` };
+  }
+  const age = Date.now() - new Date(evidence.timestamp).getTime();
+  if (isNaN(age) || age > 15 * 60 * 1000) {
+    return { valid: false, error: 'Runtime evidence expired (>15 minutes old)' };
+  }
+  return { valid: true };
+}

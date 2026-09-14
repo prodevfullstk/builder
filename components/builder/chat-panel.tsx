@@ -38,6 +38,8 @@ import { V0Stepper } from './v0-stepper';
 import { BoltPlanCard } from './bolt-plan-card';
 import { useCreditsStore, CreditAction } from '@/lib/store/credits-store';
 import { evaluateCandidateChanges } from '@/lib/validation/candidate-pipeline';
+import { parseIntentFromPrompt, MUTATING_INTENT_ACTIONS } from '@/lib/ai/intent-contract';
+import { StreamEventDecoder } from '@/lib/ai/stream-events';
 
 interface ChatPanelProps {
   onGenerateStart?: () => void;
@@ -197,44 +199,22 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       setAuthProvider(effectiveAuthProvider);
     }
 
-    // Detect intent — AI agent handles both chat and build
-    // 1. English + Bengali build verbs
-    const hasBuildVerb = /\b(build|create|make|design|generate|develop|add|fix|update|modify|refactor|implement)\b/i.test(query)
-      || /(বানাও|তৈরি|বানিয়ে|শুরু|কোড|করো|দাও|ডিজাইন|পরিবর্তন|যুক্ত|যোগ|সাজাও)/i.test(query);
+    // Gate 5: Language-agnostic semantic intent routing (no hardcoded English/Bengali wordlists)
+    const intent = parseIntentFromPrompt({
+      prompt: query,
+      framework: effectiveFramework,
+      hasImage: Boolean(attachedImage),
+      currentFiles: files,
+      activeFile,
+    });
 
-    // 2. English + Bengali app/web nouns
-    const hasAppNoun = /\b(app|website|site|page|landing|dashboard|saas|portfolio|store|blog|form|api|backend|component|navbar|hero|footer|modal)\b/i.test(query)
-      || /(সাইট|ওয়েবসাইট|অ্যাপ|পেজ|ল্যান্ডিং|ড্যাশবোর্ড|দোকান|স্টোর|ব্লগ|ফর্ম|কম্পোনেন্ট|প্রজেক্ট)/i.test(query);
-
-    // 3. Conversational continuation: user confirming after discussion (e.g. "go ahead", "start now", "yes", "do it", "হ্যাঁ", "শুরু করো")
-    const isAffirmativeConfirmation = /^(yes|yeah|yep|sure|ok|okay|go ahead|start|start now|proceed|let's do it|do it|build it|now build|please build|হ্যাঁ|শুরু করো|বানাও|তৈরি করো|ঠিক আছে|করো|এগিয়ে যাও)/i.test(query.trim());
-
-    const hasProjectContextInHistory = messages.length > 1 && messages.some((m) =>
-      m.role === 'assistant' && (
-        m.content.toLowerCase().includes('build') ||
-        m.content.toLowerCase().includes('website') ||
-        m.content.toLowerCase().includes('app') ||
-        m.content.includes('তৈরি') ||
-        m.content.includes('বানাতে') ||
-        m.content.includes('প্রজেক্ট') ||
-        m.content.includes('recommendation')
-      )
-    );
-
-    const isConversationalBuildTrigger = isAffirmativeConfirmation && hasProjectContextInHistory;
-
-    // BUG4 fix: only wipe existing files when truly starting from scratch
-    // "create a navbar" / "add a hero section" should NOT wipe the project
+    const isMutatingIntent = MUTATING_INTENT_ACTIONS.has(intent.action);
     const hasExistingFiles = Object.keys(files).length > 0;
-    const isExplicitRebuild = /^(rebuild|start over|start fresh|from scratch|reset|clear project|new project)/i.test(query.trim());
-    const isNewBuild = !hasExistingFiles || isExplicitRebuild;
+    const isNewBuild = !hasExistingFiles || intent.action === 'CREATE_PROJECT';
 
-    // Detect if prompt is extremely vague on a fresh project without any screenshot
-    // (e.g. "build a crypto app", "একটি ওয়েবসাইট বানান") without feature specifics.
-    // Route to chat mode so the AI executes the requirements grilling protocol before building.
-    const isVeryVagueInitialPrompt = isNewBuild && !attachedImage && query.length < 35 && !query.includes('\n') && !/\b(with|include|features|hero|pricing|navbar|table|chart|auth|login|signup|theme|page|dashboard with|using)\b/i.test(query) && !isAffirmativeConfirmation;
-
-    const isBuild = (hasBuildVerb || (hasAppNoun && query.length > 15) || isConversationalBuildTrigger) && !isVeryVagueInitialPrompt;
+    // Route: If the intent is mutating (CREATE_PROJECT, ADD_FEATURE, MODIFY_FEATURE, FIX_BUG, etc.)
+    // and not a vague exploratory inquiry, run build/agent mode. Otherwise conversational chat.
+    const isBuild = isMutatingIntent && (hasExistingFiles || query.length >= 8 || Boolean(attachedImage));
 
     // ── CONVERSATION MODE ─────────────────────────────────────
     if (!isBuild) {
@@ -261,6 +241,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        const sseDecoder = new StreamEventDecoder();
 
         // Add live streaming message — update it chunk by chunk
         addMessage({ role: 'assistant', content: '…' });
@@ -268,13 +249,33 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          streamContent += decoder.decode(value, { stream: true });
-          // Update the last assistant message with current streamed content
-          updateStreamingMessage(streamContent);
+          const chunk = decoder.decode(value, { stream: true });
+          const events = sseDecoder.pushChunk(chunk);
+          if (events.length > 0) {
+            for (const ev of events) {
+              if (ev.type === 'text_delta') {
+                streamContent += ev.delta;
+                updateStreamingMessage(streamContent);
+              } else if (ev.type === 'error') {
+                addLog(`[Stream Error] ${ev.message}`);
+              }
+            }
+          } else if (!chunk.startsWith('event:')) {
+            streamContent += chunk;
+            updateStreamingMessage(streamContent);
+          }
         }
         // Final flush
         const flushed = decoder.decode();
-        if (flushed) streamContent += flushed;
+        if (flushed) {
+          const flushEvents = sseDecoder.pushChunk(flushed);
+          for (const ev of flushEvents) {
+            if (ev.type === 'text_delta') streamContent += ev.delta;
+          }
+          if (flushEvents.length === 0 && !flushed.startsWith('event:')) {
+            streamContent += flushed;
+          }
+        }
         updateStreamingMessage(streamContent.trim());
 
         // ── FAILSAFE: Check if the AI returned code in chat mode ──
@@ -394,6 +395,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      const sseDecoder = new StreamEventDecoder();
       let accumulatedText = '';
       let currentSteps: TimelineStep[] = [
         { ...analyzeStep, status: 'completed', label: isFixRequest ? `Diagnosed preview error` : `Analyzed request for ${effectiveFramework.toUpperCase()}` },
@@ -408,43 +410,85 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         const chunk = decoder.decode(value, { stream: true });
         accumulatedText += chunk;
 
-        // Add "Planning architecture" step once first tokens arrive
-        if (!planningStepAdded && accumulatedText.length > 50) {
-          planningStepAdded = true;
-          const planStep: TimelineStep = {
-            id: 'plan-1',
-            type: 'inspect',
-            label: `Planning ${effectiveFramework} architecture...`,
-            status: 'completed',
-          };
-          currentSteps = [...currentSteps, planStep];
-          setActiveSteps(currentSteps);
-        }
-
-        // Streaming file detection — track live files without mutating authoritative store
-        const { currentStreamingFile } = extractStreamingState(accumulatedText);
-
-        if (currentStreamingFile) {
-          setStreamingFile(currentStreamingFile);
-          setActiveFile(currentStreamingFile);
-
-          if (!trackedFiles.has(currentStreamingFile)) {
-            trackedFiles.add(currentStreamingFile);
-            // Mark previous file steps as completed
+        const events = sseDecoder.pushChunk(chunk);
+        for (const ev of events) {
+          if (ev.type === 'plan') {
+            if (!planningStepAdded) {
+              planningStepAdded = true;
+              const planStep: TimelineStep = {
+                id: 'plan-1',
+                type: 'inspect',
+                label: ev.steps?.[0] || `Planning ${effectiveFramework} architecture...`,
+                status: 'completed',
+              };
+              currentSteps = [...currentSteps, planStep];
+              setActiveSteps(currentSteps);
+            }
+          } else if (ev.type === 'file_start' && ev.path) {
+            setStreamingFile(ev.path);
+            setActiveFile(ev.path);
+            if (!trackedFiles.has(ev.path)) {
+              trackedFiles.add(ev.path);
+              currentSteps = currentSteps.map((s) =>
+                s.type === 'file' && s.status === 'running'
+                  ? { ...s, status: 'completed' as const }
+                  : s
+              );
+              const fileStep: TimelineStep = {
+                id: `step-${ev.path}`,
+                type: 'file',
+                label: `Creating ${ev.path.split('/').pop()}`,
+                file: ev.path,
+                status: 'running',
+              };
+              currentSteps = [...currentSteps, fileStep];
+              setActiveSteps(currentSteps);
+            }
+          } else if (ev.type === 'file_complete' && ev.path) {
             currentSteps = currentSteps.map((s) =>
-              s.type === 'file' && s.status === 'running'
+              s.file === ev.path
                 ? { ...s, status: 'completed' as const }
                 : s
             );
-            const fileStep: TimelineStep = {
-              id: `step-${currentStreamingFile}`,
-              type: 'file',
-              label: `Creating ${currentStreamingFile.split('/').pop()}`,
-              file: currentStreamingFile,
-              status: 'running',
-            };
-            currentSteps = [...currentSteps, fileStep];
             setActiveSteps(currentSteps);
+          }
+        }
+
+        // Fallback for non-SSE or text chunks
+        if (events.length === 0) {
+          if (!planningStepAdded && accumulatedText.length > 50) {
+            planningStepAdded = true;
+            const planStep: TimelineStep = {
+              id: 'plan-1',
+              type: 'inspect',
+              label: `Planning ${effectiveFramework} architecture...`,
+              status: 'completed',
+            };
+            currentSteps = [...currentSteps, planStep];
+            setActiveSteps(currentSteps);
+          }
+
+          const { currentStreamingFile } = extractStreamingState(accumulatedText);
+          if (currentStreamingFile) {
+            setStreamingFile(currentStreamingFile);
+            setActiveFile(currentStreamingFile);
+            if (!trackedFiles.has(currentStreamingFile)) {
+              trackedFiles.add(currentStreamingFile);
+              currentSteps = currentSteps.map((s) =>
+                s.type === 'file' && s.status === 'running'
+                  ? { ...s, status: 'completed' as const }
+                  : s
+              );
+              const fileStep: TimelineStep = {
+                id: `step-${currentStreamingFile}`,
+                type: 'file',
+                label: `Creating ${currentStreamingFile.split('/').pop()}`,
+                file: currentStreamingFile,
+                status: 'running',
+              };
+              currentSteps = [...currentSteps, fileStep];
+              setActiveSteps(currentSteps);
+            }
           }
         }
       }

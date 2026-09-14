@@ -283,6 +283,7 @@ export async function evaluateCandidateChanges(params: {
   isNewBuild?: boolean;
   intent?: IntentContract;
   baselineRevision?: number;
+  candidateTimestamp?: string;
   retrievalContext?: RetrievalContext;
   runtimeContext?: {
     nativeBuildStatus?: 'passed' | 'failed' | 'unavailable';
@@ -461,6 +462,16 @@ export async function evaluateCandidateChanges(params: {
     }
   }
 
+  // Check 10: Authoritative Native Build Status Gate (GATE-101)
+  if (runtimeContext?.nativeBuildStatus && runtimeContext.nativeBuildStatus !== 'passed') {
+    allChecks.push({
+      name: 'native_build_gate',
+      status: 'failed',
+      message: `Native build verification failed or did not pass (status: ${runtimeContext.nativeBuildStatus}).`,
+    });
+    allDiagnostics.push(`Acceptance criteria failure: native build is not 'passed' (status: ${runtimeContext.nativeBuildStatus})`);
+  }
+
   const anyFailed = allChecks.some((c) => c.status === 'failed');
   const accepted = !anyFailed;
   const candidateHash = computeCandidateHash(candidateWorkspace);
@@ -477,6 +488,7 @@ export async function evaluateCandidateChanges(params: {
   const evidence: ValidationEvidence = {
     validationId,
     projectId: projectId || 'transient-workspace',
+    candidateTimestamp: params.candidateTimestamp,
     intentId: intent?.id,
     candidateHash,
     baselineRevision,
@@ -485,6 +497,13 @@ export async function evaluateCandidateChanges(params: {
     timestamp,
     framework,
     verificationLevel: accepted ? 'STATIC_VALIDATED' : 'REJECTED',
+    nativeBuild: runtimeContext?.nativeBuildStatus ? {
+      attempted: true,
+      status: runtimeContext.nativeBuildStatus,
+      framework,
+      runner: 'microvm_sandbox',
+      environment: 'vercel_sandbox',
+    } : undefined,
     checks: allChecks,
     accepted,
     diagnostics: allDiagnostics,

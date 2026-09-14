@@ -7,6 +7,7 @@ import { parseIntentFromPrompt, validateIntent } from "@/lib/ai/intent-contract"
 import { buildRetrievalContext } from "@/lib/workspace/project-retrieval";
 import { validateImageUpload } from "@/lib/vision/image-hardening";
 import { createVisualSpec } from "@/lib/vision/visual-spec";
+import { createTypedAgentSSEStream } from "@/lib/ai/stream-events";
 
 function getClientIp(req: NextRequest): string {
   const forwarded = req.headers.get('x-forwarded-for');
@@ -207,7 +208,7 @@ INSTRUCTIONS:
 Apply the requested changes. Output modified/new files via standard code blocks or <FILES> / <PATCHES>. Preserve all existing working features and dependencies!`;
     }
 
-    const stream = await createGeminiStream({
+    const rawStream = await createGeminiStream({
       prompt: userContent,
       image: validatedImageRef?.dataUrl,
       framework,
@@ -217,10 +218,20 @@ Apply the requested changes. Output modified/new files via standard code blocks 
       ],
     });
 
-    return new Response(stream, {
+    const typedStream = createTypedAgentSSEStream({
+      rawStream,
+      intent,
+      planSteps: [
+        `Analyze ${framework} intent: ${intent.action}`,
+        `Retrieve relevant context for target components`,
+        `Synthesize candidate implementation`,
+      ],
+    });
+
+    return new Response(typedStream, {
       status: 200,
       headers: {
-        "Content-Type": "text/plain; charset=utf-8",
+        "Content-Type": "text/event-stream; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
         "X-Content-Type-Options": "nosniff",
         "Connection": "keep-alive",

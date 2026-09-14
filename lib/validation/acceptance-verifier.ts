@@ -1,3 +1,7 @@
+import { NativeBuildStatus } from './types';
+
+export type CriterionClass = 'static' | 'build' | 'runtime' | 'behavioral' | 'visual';
+
 export type CriterionType =
   | 'file_exists'
   | 'symbol_exists'
@@ -25,6 +29,7 @@ export interface AcceptanceCriterion {
   id: string;
   criterion: string;
   type: CriterionType;
+  criterionClass?: CriterionClass;
   target: string;
   verification: VerificationMechanism;
   expectedValue?: string;
@@ -35,6 +40,7 @@ export interface CriterionResult {
   id: string;
   criterion: string;
   type: CriterionType;
+  criterionClass?: CriterionClass;
   target: string;
   status: 'passed' | 'failed' | 'unverified';
   message: string;
@@ -61,9 +67,11 @@ export function evaluateAcceptanceCriteria(params: {
   criteria: AcceptanceCriterion[];
   baselineWorkspace?: Record<string, string>;
   runtimeContext?: {
-    nativeBuildStatus?: 'passed' | 'failed' | 'unavailable';
+    nativeBuildStatus?: NativeBuildStatus;
     runtimeHttpStatus?: number;
     visualStatus?: 'passed' | 'failed' | 'unavailable';
+    behavioralPassed?: boolean;
+    behavioralDetails?: Record<string, any>;
   };
 }): AcceptanceEvaluationSummary {
   const { workspace, criteria, baselineWorkspace = {}, runtimeContext = {} } = params;
@@ -81,6 +89,7 @@ export function evaluateAcceptanceCriteria(params: {
           id,
           criterion,
           type,
+          criterionClass: 'static',
           target,
           status: exists ? 'passed' : 'failed',
           message: exists ? `File '${target}' exists in workspace.` : `Required file '${target}' is missing from workspace.`,
@@ -102,6 +111,7 @@ export function evaluateAcceptanceCriteria(params: {
           id,
           criterion,
           type,
+          criterionClass: 'static',
           target,
           status: passed ? 'passed' : 'failed',
           message: passed
@@ -134,6 +144,7 @@ export function evaluateAcceptanceCriteria(params: {
           id,
           criterion,
           type,
+          criterionClass: 'static',
           target,
           status: found ? 'passed' : 'failed',
           message: found
@@ -159,6 +170,7 @@ export function evaluateAcceptanceCriteria(params: {
           id,
           criterion,
           type,
+          criterionClass: 'static',
           target,
           status: matched ? 'passed' : 'failed',
           message: matched
@@ -170,35 +182,38 @@ export function evaluateAcceptanceCriteria(params: {
       }
 
       case 'build_passes': {
-        const buildStatus = runtimeContext.nativeBuildStatus || 'passed';
+        const buildStatus = runtimeContext.nativeBuildStatus;
         const passed = buildStatus === 'passed';
         results.push({
           id,
           criterion,
           type,
+          criterionClass: 'build',
           target,
           status: passed ? 'passed' : 'failed',
           message: passed
             ? 'Native build verification passed.'
-            : `Native build verification failed or was unavailable (status: ${buildStatus}).`,
+            : `Native build verification failed or was not run (status: ${buildStatus || 'not_run'}).`,
         });
-        if (!passed) diagnostics.push('Acceptance criteria failure: native build did not pass');
+        if (!passed) diagnostics.push(`Acceptance criteria failure: native build is not 'passed' (status: ${buildStatus || 'not_run'})`);
         break;
       }
 
       case 'runtime_http': {
-        const httpOk = (runtimeContext.runtimeHttpStatus ?? 200) >= 200 && (runtimeContext.runtimeHttpStatus ?? 200) < 300;
+        const httpStatus = runtimeContext.runtimeHttpStatus;
+        const httpOk = typeof httpStatus === 'number' && httpStatus >= 200 && httpStatus < 300;
         results.push({
           id,
           criterion,
           type,
+          criterionClass: 'runtime',
           target,
           status: httpOk ? 'passed' : 'failed',
           message: httpOk
-            ? `Runtime HTTP smoke check returned HTTP ${runtimeContext.runtimeHttpStatus || 200}.`
-            : `Runtime HTTP smoke check returned HTTP ${runtimeContext.runtimeHttpStatus}.`,
+            ? `Runtime HTTP smoke check returned HTTP ${httpStatus}.`
+            : `Runtime HTTP smoke check failed or was not executed (HTTP: ${httpStatus ?? 'not_run'}).`,
         });
-        if (!httpOk) diagnostics.push('Acceptance criteria failure: runtime HTTP smoke check failed');
+        if (!httpOk) diagnostics.push(`Acceptance criteria failure: runtime HTTP smoke check failed (HTTP: ${httpStatus ?? 'not_run'})`);
         break;
       }
 
@@ -238,6 +253,7 @@ export function evaluateAcceptanceCriteria(params: {
           id,
           criterion,
           type,
+          criterionClass: 'static',
           target,
           status: propertyVerified ? 'passed' : 'failed',
           message: propertyVerified
@@ -251,20 +267,28 @@ export function evaluateAcceptanceCriteria(params: {
 
       case 'interaction':
       case 'responsive_behavior': {
-        // e.g. mobile hamburger menu: check for button toggle state, onClick/isOpen/toggle, md:hidden, etc.
+        const behavioralRun = runtimeContext.behavioralPassed !== undefined;
         let interactionFound = false;
         let detail = '';
 
-        for (const [filePath, content] of Object.entries(workspace)) {
-          const hasMenuState = /isOpen|setIsOpen|toggleMenu|isMenuOpen|showMenu|mobileMenu/i.test(content);
-          const hasTrigger = /<button[^>]*aria-label=['"][^'"]*menu['"][^>]*>|<button[^>]*onClick/i.test(content) ||
-            /Menu|X|hamburger/i.test(content);
-          const hasResponsiveClass = /md:hidden|sm:hidden|lg:hidden|hidden md:flex|hidden md:block/i.test(content);
+        if (behavioralRun) {
+          interactionFound = runtimeContext.behavioralPassed === true;
+          detail = interactionFound
+            ? `Runtime behavioral interaction verified on running application: ${JSON.stringify(runtimeContext.behavioralDetails || {})}`
+            : 'Runtime behavioral interaction failed on running application.';
+        } else {
+          // Static fallback check
+          for (const [filePath, content] of Object.entries(workspace)) {
+            const hasMenuState = /isOpen|setIsOpen|toggleMenu|isMenuOpen|showMenu|mobileMenu/i.test(content);
+            const hasTrigger = /<button[^>]*aria-label=['"][^'"]*menu['"][^>]*>|<button[^>]*onClick/i.test(content) ||
+              /Menu|X|hamburger/i.test(content);
+            const hasResponsiveClass = /md:hidden|sm:hidden|lg:hidden|hidden md:flex|hidden md:block/i.test(content);
 
-          if ((hasMenuState && hasTrigger) || (hasResponsiveClass && hasTrigger)) {
-            interactionFound = true;
-            detail = `Found mobile interaction / responsive controls in '${filePath}'`;
-            break;
+            if ((hasMenuState && hasTrigger) || (hasResponsiveClass && hasTrigger)) {
+              interactionFound = true;
+              detail = `Static behavioral signature detected in '${filePath}'`;
+              break;
+            }
           }
         }
 
@@ -272,6 +296,7 @@ export function evaluateAcceptanceCriteria(params: {
           id,
           criterion,
           type,
+          criterionClass: 'behavioral',
           target,
           status: interactionFound ? 'passed' : 'failed',
           message: interactionFound
@@ -288,13 +313,14 @@ export function evaluateAcceptanceCriteria(params: {
           id,
           criterion,
           type,
+          criterionClass: 'visual',
           target,
-          status: visualPassed ? 'passed' : 'unverified',
+          status: visualPassed ? 'passed' : 'failed',
           message: visualPassed
-            ? 'Visual similarity verified against reference screenshot.'
-            : 'Automated pixel/visual comparison unavailable; marked unverified.',
+            ? 'Visual similarity verified against reference screenshot via real image comparison.'
+            : `Visual verification is unavailable or failed (status: ${runtimeContext.visualStatus || 'unavailable'}). Simulated visual scores are rejected.`,
         });
-        // Note: unverified does not block commit unless mandatory visual gating is required
+        if (!visualPassed) diagnostics.push(`Acceptance criteria failure: visual verification not passed (${runtimeContext.visualStatus || 'unavailable'})`);
         break;
       }
 

@@ -4,6 +4,7 @@ import React, { Component, ErrorInfo, ReactNode, useEffect, useRef } from 'react
 import Editor, { OnMount } from '@monaco-editor/react';
 import { useProjectStore } from '@/lib/store/project-store';
 import { evaluateCandidateChanges } from '@/lib/validation/candidate-pipeline';
+import { StreamEventDecoder } from '@/lib/ai/stream-events';
 import { FileCode, AlertCircle, Copy, Check, FilePlus, Sparkles, Send, X, Loader2 } from 'lucide-react';
 
 interface ErrorBoundaryProps {
@@ -55,7 +56,7 @@ interface CodeEditorProps {
 }
 
 export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
-  const { files, activeFile, updateFile, isStreaming, streamingFile, requestCreateFile, framework, dbProvider, authProvider, projectId, addLog } = useProjectStore();
+  const { files, setFiles, activeFile, updateFile, isStreaming, streamingFile, requestCreateFile, framework, dbProvider, authProvider, projectId, addLog } = useProjectStore();
   const editorRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = React.useState(false);
@@ -173,43 +174,65 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
       if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
 
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let result = '';
+      const textDecoder = new TextDecoder();
+      const sseDecoder = new StreamEventDecoder();
+      let rawStreamResult = '';
+      const proposedFiles: Record<string, string> = {};
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        result += decoder.decode(value, { stream: true });
-      }
+        const chunk = textDecoder.decode(value, { stream: true });
+        rawStreamResult += chunk;
 
-      // Extract proposed file content from <FILES> block or raw response
-      let proposedContent: string | null = null;
-      const filesMatch = result.match(/<FILES>\s*([\s\S]*?)\s*<\/FILES>/);
-      if (filesMatch) {
-        try {
-          const json = JSON.parse(filesMatch[1].trim());
-          const file = json.files?.find((f: any) => f.path === activeFile) || json.files?.[0];
-          if (file?.content) proposedContent = file.content;
-        } catch {
-          proposedContent = result.split('<FILES>')[0].trim();
+        const events = sseDecoder.pushChunk(chunk);
+        for (const ev of events) {
+          if (ev.type === 'file_delta' && ev.path) {
+            proposedFiles[ev.path] = (proposedFiles[ev.path] || '') + ev.delta;
+          }
         }
-      } else {
-        const cleaned = result.replace(/<FILES>[\s\S]*<\/FILES>/g, '').trim();
-        if (cleaned.length > 20) proposedContent = cleaned;
       }
 
-      if (!proposedContent) {
+      // If proposedFiles was not fully populated via SSE, parse from <FILES> block or raw response
+      if (Object.keys(proposedFiles).length === 0) {
+        const filesMatch = rawStreamResult.match(/<FILES>\s*([\s\S]*?)\s*<\/FILES>/);
+        if (filesMatch) {
+          try {
+            const json = JSON.parse(filesMatch[1].trim());
+            if (Array.isArray(json.files)) {
+              for (const f of json.files) {
+                if (f.path && typeof f.content === 'string') {
+                  proposedFiles[f.path] = f.content;
+                }
+              }
+            }
+          } catch {
+            proposedFiles[activeFile] = rawStreamResult.split('<FILES>')[0].trim();
+          }
+        } else {
+          const cleaned = rawStreamResult.replace(/<FILES>[\s\S]*<\/FILES>/g, '').replace(/event: [^\n]+\ndata: [^\n]+\n\n/g, '').trim();
+          if (cleaned.length > 20) {
+            proposedFiles[activeFile] = cleaned;
+          }
+        }
+      }
+
+      if (Object.keys(proposedFiles).length === 0) {
         setAiError('AI did not produce valid replacement code.');
         return;
       }
 
-      // Candidate Validation Gate (Security, framework contract, secrets)
-      addLog(`[Monaco AI Edit] Validating candidate changes for ${activeFile}...`);
+      const candidateFiles = { ...files, ...proposedFiles };
+
+      // Candidate Validation Gate (Security, framework contract, secrets, minimal scope)
+      addLog(`[Monaco AI Edit] Validating candidate changes across ${Object.keys(proposedFiles).length} file(s)...`);
       const evalResult = await evaluateCandidateChanges({
         projectId: projectId || 'workspace',
         framework,
         currentFiles: files,
-        candidateFiles: { ...files, [activeFile]: proposedContent },
+        candidateFiles,
         isNewBuild: false,
+        baselineRevision,
       });
 
       if (!evalResult.accepted) {
@@ -227,12 +250,41 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
         return;
       }
 
-      // Transactional commit: candidate validation and revision freshness verified
-      updateFile(activeFile, proposedContent);
+      // Gate 6: Centralized Server-Authoritative CAS Commit Boundary
+      // No direct client mutation occurs before the server-authoritative commit succeeds
+      const commitResponse = await fetch('/api/validate/candidate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: projectId || 'demo-saas',
+          expectedRevision: baselineRevision,
+          candidateFiles,
+          candidateHash: evalResult.evidence.candidateHash,
+          validationEvidence: evalResult.evidence,
+        }),
+      });
+
+      const commitResult = await commitResponse.json().catch(() => ({}));
+      if (!commitResponse.ok || !commitResult.success) {
+        const errorMsg = commitResult.error || `Commit rejected: HTTP ${commitResponse.status}`;
+        setAiError(errorMsg);
+        addLog(`[Monaco AI Edit CAS Rejected] ${errorMsg}`);
+        return;
+      }
+
+      // Authoritative State Refresh: Update workspace files and monotonic revision from commit result
+      if (commitResult.project?.files) {
+        setFiles(commitResult.project.files);
+      } else {
+        for (const [fPath, fContent] of Object.entries(proposedFiles)) {
+          updateFile(fPath, fContent);
+        }
+      }
+
       setAiPrompt('');
       setAiBarOpen(false);
       setAiError(null);
-      addLog(`[Monaco AI Edit] ✓ Successfully updated ${activeFile} (${evalResult.evidence.checks.length} checks passed).`);
+      addLog(`[Monaco AI Edit CAS Committed] ✓ Atomically updated ${Object.keys(proposedFiles).length} file(s) to revision ${commitResult.revision || (baselineRevision + 1)}.`);
     } catch (err: any) {
       console.error('AI edit failed:', err);
       setAiError(err?.message || 'AI edit request failed.');

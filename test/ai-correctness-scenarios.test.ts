@@ -78,6 +78,10 @@ describe('Antigravity Phase AI Correctness — Primary Scenarios (A, B, C, D)', 
         candidateFiles,
         isNewBuild: true,
         intent,
+        runtimeContext: {
+          nativeBuildStatus: 'passed',
+          runtimeHttpStatus: 200,
+        },
       });
 
       assert.strictEqual(evalResult.accepted, true, `Candidate must be accepted: ${evalResult.diagnostics.join(', ')}`);
@@ -176,6 +180,10 @@ describe('Antigravity Phase AI Correctness — Primary Scenarios (A, B, C, D)', 
         candidateFiles,
         intent,
         baselineRevision: 1,
+        runtimeContext: {
+          nativeBuildStatus: 'passed',
+          runtimeHttpStatus: 200,
+        },
       });
 
       assert.strictEqual(evalResult.accepted, true, `Candidate must be accepted: ${evalResult.diagnostics.join(', ')}`);
@@ -291,6 +299,10 @@ describe('Antigravity Phase AI Correctness — Primary Scenarios (A, B, C, D)', 
         candidateFiles,
         intent,
         baselineRevision: 1,
+        runtimeContext: {
+          nativeBuildStatus: 'passed',
+          runtimeHttpStatus: 200,
+        },
       });
 
       assert.strictEqual(evalResult.accepted, true, `Candidate must be accepted: ${evalResult.diagnostics.join(', ')}`);
@@ -388,6 +400,11 @@ describe('Antigravity Phase AI Correctness — Primary Scenarios (A, B, C, D)', 
         candidateFiles,
         isNewBuild: true,
         intent,
+        runtimeContext: {
+          nativeBuildStatus: 'passed',
+          runtimeHttpStatus: 200,
+          visualStatus: 'passed',
+        },
       });
 
       assert.strictEqual(evalResult.accepted, true);
