@@ -42,8 +42,13 @@ export interface ValidationEvidence {
   validationId: string;
   projectId: string;
   candidateId?: string;
+  intentId?: string;
   candidateHash?: string;
+  baselineRevision?: number;
   expectedRevision?: number;
+  baselineHash?: string;
+  changedFiles?: string[];
+  changedSymbols?: string[];
   timestamp: string;
   startedAt?: string;
   completedAt?: string;
@@ -56,6 +61,11 @@ export interface ValidationEvidence {
   checks: ValidationCheck[];
   accepted: boolean;
   diagnostics: string[];
+  acceptanceCriteria?: any[];
+  acceptanceResults?: any;
+  retrievalContext?: any;
+  provider?: string;
+  model?: string;
   buildResult?: {
     success: boolean;
     errors?: string[];
@@ -65,6 +75,13 @@ export interface ValidationEvidence {
     success: boolean;
     status?: string;
     runtimeUrl?: string;
+  };
+  visualResult?: {
+    screenshotCaptured: boolean;
+    comparisonStatus: string;
+    verificationConfidence: number;
+    visualMismatches?: any[];
+    notes?: string;
   };
   runner?: string;
   commitRevision?: string;

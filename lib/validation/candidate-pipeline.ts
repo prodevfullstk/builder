@@ -1,5 +1,11 @@
 import { ValidationCheck, ValidationEvidence, ValidationResult } from './types';
 import { validateFrameworkContract } from './framework-validator';
+import { IntentContract, validateIntent } from '../ai/intent-contract';
+import { RetrievalContext } from '../workspace/project-retrieval';
+import { enforceMinimalScope } from '../patch/scope-enforcer';
+import { verifyBaselineDelta } from './delta-verifier';
+import { evaluateAcceptanceCriteria } from './acceptance-verifier';
+import { verifyBehavioralContract } from './behavioral-verifier';
 
 export interface CandidateEvaluationResult {
   accepted: boolean;
@@ -257,12 +263,17 @@ export function validateRequirementsProtection(
  *
  * Requirements:
  * - AI output is a candidate, NOT evidence of success.
- * - If validation fails:
- *   - do not silently commit invalid changes
- *   - preserve previous known-good project
- *   - expose diagnostics
- *   - generate machine-readable validation evidence
- * - Only commit after successful validation.
+ * - Enforces:
+ *   1. Requirements & security invariant protection
+ *   2. Secret scanning
+ *   3. Framework contract validation
+ *   4. Non-empty workspace check
+ *   5. Structured Intent validation (when intent provided)
+ *   6. Minimal scope enforcement
+ *   7. Baseline delta & property verification
+ *   8. Machine-readable acceptance criteria evaluation
+ *   9. Behavioral contract verification
+ * - Generates immutable ValidationEvidence bound to candidateHash and baseline.
  */
 export async function evaluateCandidateChanges(params: {
   projectId: string;
@@ -270,8 +281,27 @@ export async function evaluateCandidateChanges(params: {
   currentFiles: Record<string, string>;
   candidateFiles: Record<string, string | null>;
   isNewBuild?: boolean;
+  intent?: IntentContract;
+  baselineRevision?: number;
+  retrievalContext?: RetrievalContext;
+  runtimeContext?: {
+    nativeBuildStatus?: 'passed' | 'failed' | 'unavailable';
+    runtimeHttpStatus?: number;
+    visualStatus?: 'passed' | 'failed' | 'unavailable';
+  };
 }): Promise<CandidateEvaluationResult> {
-  const { projectId, framework, currentFiles, candidateFiles, isNewBuild = false } = params;
+  const {
+    projectId,
+    framework,
+    currentFiles,
+    candidateFiles,
+    isNewBuild = false,
+    intent,
+    baselineRevision = 1,
+    retrievalContext,
+    runtimeContext,
+  } = params;
+
   const validationId = 'val_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6);
   const timestamp = new Date().toISOString();
 
@@ -322,20 +352,144 @@ export async function evaluateCandidateChanges(params: {
     });
   }
 
+  // Check 5: Canonical Intent Validation (when intent provided)
+  if (intent) {
+    const intentVal = validateIntent(intent);
+    if (!intentVal.valid) {
+      allChecks.push({
+        name: 'intent_contract_valid',
+        status: 'failed',
+        message: `Intent validation failed: ${intentVal.errors.join('; ')}`,
+      });
+      allDiagnostics.push(...intentVal.errors);
+    } else {
+      allChecks.push({
+        name: 'intent_contract_valid',
+        status: 'passed',
+        message: `Intent '${intent.action}' validated successfully.`,
+      });
+    }
+
+    // Check 6: Minimal Scope Enforcement
+    const scopeVal = enforceMinimalScope({
+      intent,
+      baselineFiles: currentFiles,
+      candidateFiles: candidateWorkspace,
+      retrievalContext,
+    });
+    if (!scopeVal.allowed) {
+      allChecks.push({
+        name: 'minimal_scope_enforcement',
+        status: 'failed',
+        message: `Scope violation: ${scopeVal.diagnostics.join('; ')}`,
+      });
+      allDiagnostics.push(...scopeVal.diagnostics);
+    } else {
+      allChecks.push({
+        name: 'minimal_scope_enforcement',
+        status: 'passed',
+        message: `Scope enforcement passed: ${scopeVal.touchedFiles.length} file(s) modified within permitted scope.`,
+      });
+    }
+
+    // Check 7: Baseline Delta Verification
+    const deltaVal = verifyBaselineDelta({
+      baselineRevision,
+      baselineFiles: currentFiles,
+      candidateFiles: candidateWorkspace,
+      requestedTarget: intent.targetDescription,
+      requestedDelta: 'modified',
+    });
+    if (!deltaVal.valid) {
+      allChecks.push({
+        name: 'baseline_delta_verification',
+        status: 'failed',
+        message: `Delta verification failed: ${deltaVal.diagnostics.join('; ')}`,
+      });
+      allDiagnostics.push(...deltaVal.diagnostics);
+    } else {
+      allChecks.push({
+        name: 'baseline_delta_verification',
+        status: 'passed',
+        message: `Delta verified: ${deltaVal.changedFiles.length} changed file(s).`,
+      });
+    }
+
+    // Check 8: Acceptance Criteria Evaluation
+    if (intent.acceptanceCriteria && intent.acceptanceCriteria.length > 0) {
+      const criteriaSummary = evaluateAcceptanceCriteria({
+        workspace: candidateWorkspace,
+        criteria: intent.acceptanceCriteria,
+        baselineWorkspace: currentFiles,
+        runtimeContext,
+      });
+      if (!criteriaSummary.allPassed) {
+        allChecks.push({
+          name: 'acceptance_criteria_verification',
+          status: 'failed',
+          message: `${criteriaSummary.failedCount} acceptance criterion/criteria failed.`,
+        });
+        allDiagnostics.push(...criteriaSummary.diagnostics);
+      } else {
+        allChecks.push({
+          name: 'acceptance_criteria_verification',
+          status: 'passed',
+          message: `All ${criteriaSummary.totalCount} acceptance criteria satisfied.`,
+        });
+      }
+    }
+
+    // Check 9: Targeted Behavioral Verification
+    const behavioralSummary = verifyBehavioralContract({
+      intentDescription: intent.targetDescription,
+      candidateFiles: candidateWorkspace,
+      baselineFiles: currentFiles,
+    });
+    if (!behavioralSummary.allPassed) {
+      allChecks.push({
+        name: 'behavioral_contract_verification',
+        status: 'failed',
+        message: `${behavioralSummary.failedTests} behavioral test(s) failed.`,
+      });
+      allDiagnostics.push(...behavioralSummary.diagnostics);
+    } else if (behavioralSummary.totalTests > 0) {
+      allChecks.push({
+        name: 'behavioral_contract_verification',
+        status: 'passed',
+        message: `All ${behavioralSummary.totalTests} behavioral contract tests passed.`,
+      });
+    }
+  }
+
   const anyFailed = allChecks.some((c) => c.status === 'failed');
   const accepted = !anyFailed;
   const candidateHash = computeCandidateHash(candidateWorkspace);
+  const baselineHash = computeCandidateHash(currentFiles);
+
+  const changedFiles: string[] = [];
+  const allPaths = new Set([...Object.keys(currentFiles), ...Object.keys(candidateWorkspace)]);
+  for (const p of allPaths) {
+    if (currentFiles[p] !== candidateWorkspace[p]) {
+      changedFiles.push(p);
+    }
+  }
 
   const evidence: ValidationEvidence = {
     validationId,
     projectId: projectId || 'transient-workspace',
+    intentId: intent?.id,
     candidateHash,
+    baselineRevision,
+    baselineHash,
+    changedFiles,
     timestamp,
     framework,
     verificationLevel: accepted ? 'STATIC_VALIDATED' : 'REJECTED',
     checks: allChecks,
     accepted,
     diagnostics: allDiagnostics,
+    acceptanceCriteria: intent?.acceptanceCriteria,
+    retrievalContext,
   };
 
   if (!accepted) {
@@ -348,7 +502,7 @@ export async function evaluateCandidateChanges(params: {
     };
   }
 
-  // ACCEPT: Commit accepted changes to the authoritative workspace
+  // ACCEPT: Return accepted candidate workspace
   return {
     accepted: true,
     committedFiles: candidateWorkspace,

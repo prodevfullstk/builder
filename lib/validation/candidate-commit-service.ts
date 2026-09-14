@@ -113,11 +113,11 @@ export async function commitVerifiedCandidate(
     };
   }
 
-  if (!validationEvidence.accepted) {
+  if (!validationEvidence.accepted || validationEvidence.verificationLevel === 'REJECTED') {
     return {
       success: false,
       committed: false,
-      error: `Commit Gate Rejected: Candidate failed validation checks. Diagnostics: ${validationEvidence.diagnostics.join(" | ")}`,
+      error: `Commit Gate Rejected: Candidate failed validation checks. Diagnostics: ${(validationEvidence.diagnostics || []).join(" | ")}`,
     };
   }
 
