@@ -1,4 +1,4 @@
-﻿import { computeCandidateHash } from "@/lib/validation/candidate-pipeline";
+import { computeCandidateHash } from "@/lib/validation/candidate-pipeline";
 import { ValidationEvidence } from "@/lib/validation/types";
 import {
   getServerProject,
@@ -65,7 +65,36 @@ export async function commitVerifiedCandidate(
     };
   }
 
-  // 2. Candidate Integrity & Hash Validation
+  // 2. Evidence Context Binding (Project & Revision)
+  if (validationEvidence.projectId && validationEvidence.projectId !== projectId) {
+    return {
+      success: false,
+      committed: false,
+      error: `Evidence Project Mismatch: Validation evidence was generated for project '${validationEvidence.projectId}', but target project is '${projectId}'.`,
+    };
+  }
+
+  if (validationEvidence.expectedRevision !== undefined && validationEvidence.expectedRevision !== expectedRevision) {
+    return {
+      success: false,
+      committed: false,
+      error: `Evidence Revision Mismatch: Validation evidence bound to revision ${validationEvidence.expectedRevision}, but commit expected revision is ${expectedRevision}.`,
+    };
+  }
+
+  // 3. Evidence Expiration Check (TTL: 15 minutes = 900,000ms)
+  if (validationEvidence.timestamp) {
+    const evidenceAge = Date.now() - new Date(validationEvidence.timestamp).getTime();
+    if (!isNaN(evidenceAge) && evidenceAge > 15 * 60 * 1000) {
+      return {
+        success: false,
+        committed: false,
+        error: `Evidence Expired: Validation evidence expired (${Math.round(evidenceAge / 1000)}s old, max allowed: 900s).`,
+      };
+    }
+  }
+
+  // 4. Candidate Integrity & Hash Validation
   const actualHash = computeCandidateHash(candidateFiles);
   if (actualHash !== candidateHash) {
     return {
@@ -75,7 +104,7 @@ export async function commitVerifiedCandidate(
     };
   }
 
-  // 3. Evidence Binding Validation
+  // 5. Evidence Hash Binding Validation
   if (validationEvidence.candidateHash && validationEvidence.candidateHash !== actualHash) {
     return {
       success: false,
@@ -89,6 +118,15 @@ export async function commitVerifiedCandidate(
       success: false,
       committed: false,
       error: `Commit Gate Rejected: Candidate failed validation checks. Diagnostics: ${validationEvidence.diagnostics.join(" | ")}`,
+    };
+  }
+
+  // 6. Native Verification Policy for Authoritative Commits (GATE-701)
+  if (validationEvidence.nativeBuild && validationEvidence.nativeBuild.status === 'failed') {
+    return {
+      success: false,
+      committed: false,
+      error: `Commit Gate Rejected: Native build failed in isolated sandbox.`,
     };
   }
 

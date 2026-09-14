@@ -191,54 +191,80 @@ describe('Antigravity Phase 4 — Production Verification, Concurrency & Sandbox
   // ── GEN-401: Connected Native BuildRunner & Truthful Evidence ──
   describe('GEN-401: Connected Native BuildRunner & Truthful Verification Evidence', () => {
     it('returns truthful VERIFICATION_UNAVAILABLE when VERCEL_TOKEN is not configured', async () => {
-      seedAuthoritativeProject('test-build-verif-1', 'demo-user', 'Demo Build Project', 'nextjs', {
-        'package.json': JSON.stringify({ dependencies: { next: '^15.0.0' } }),
-      });
+      const origToken = process.env.VERCEL_TOKEN;
+      const origProj = process.env.VERCEL_PROJECT_ID;
+      const origTeam = process.env.VERCEL_TEAM_ID;
+      delete process.env.VERCEL_TOKEN;
+      delete process.env.VERCEL_PROJECT_ID;
+      delete process.env.VERCEL_TEAM_ID;
 
-      const req = new NextRequest('http://localhost/api/validate/build', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Auth-Mode': 'demo',
-        },
-        body: JSON.stringify({
-          projectId: 'test-build-verif-1',
-          framework: 'nextjs',
-          files: { 'package.json': '{}' },
-          mandatory: false,
-        }),
-      });
+      try {
+        seedAuthoritativeProject('test-build-verif-1', 'demo-user', 'Demo Build Project', 'nextjs', {
+          'package.json': JSON.stringify({ dependencies: { next: '^15.0.0' } }),
+        });
 
-      const res = await validateBuildPOST(req);
-      assert.strictEqual(res.status, 200);
-      const data = await res.json();
-      assert.strictEqual(data.success, true);
-      assert.strictEqual(data.verificationLevel, 'VERIFICATION_UNAVAILABLE');
-      assert.strictEqual(data.nativeBuild.status, 'unavailable');
-      assert.strictEqual(data.nativeBuild.environment, 'none');
+        const req = new NextRequest('http://localhost/api/validate/build', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Auth-Mode': 'demo',
+          },
+          body: JSON.stringify({
+            projectId: 'test-build-verif-1',
+            framework: 'nextjs',
+            files: { 'package.json': '{}' },
+            mandatory: false,
+          }),
+        });
+
+        const res = await validateBuildPOST(req);
+        assert.strictEqual(res.status, 200);
+        const data = await res.json();
+        assert.strictEqual(data.success, true);
+        assert.strictEqual(data.verificationLevel, 'VERIFICATION_UNAVAILABLE');
+        assert.strictEqual(data.nativeBuild.status, 'unavailable');
+        assert.strictEqual(data.nativeBuild.environment, 'none');
+      } finally {
+        if (origToken) process.env.VERCEL_TOKEN = origToken;
+        if (origProj) process.env.VERCEL_PROJECT_ID = origProj;
+        if (origTeam) process.env.VERCEL_TEAM_ID = origTeam;
+      }
     });
 
     it('fails closed with HTTP 503 when mandatory native verification is requested but sandbox is missing', async () => {
-      const req = new NextRequest('http://localhost/api/validate/build', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Auth-Mode': 'demo',
-        },
-        body: JSON.stringify({
-          projectId: 'test-build-verif-1',
-          framework: 'nextjs',
-          files: { 'package.json': '{}' },
-          mandatory: true, // Mandatory!
-        }),
-      });
+      const origToken = process.env.VERCEL_TOKEN;
+      const origProj = process.env.VERCEL_PROJECT_ID;
+      const origTeam = process.env.VERCEL_TEAM_ID;
+      delete process.env.VERCEL_TOKEN;
+      delete process.env.VERCEL_PROJECT_ID;
+      delete process.env.VERCEL_TEAM_ID;
 
-      const res = await validateBuildPOST(req);
-      assert.strictEqual(res.status, 503);
-      const data = await res.json();
-      assert.strictEqual(data.success, false);
-      assert.match(data.error, /failed closed/);
-      assert.strictEqual(data.verificationLevel, 'VERIFICATION_UNAVAILABLE');
+      try {
+        const req = new NextRequest('http://localhost/api/validate/build', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Auth-Mode': 'demo',
+          },
+          body: JSON.stringify({
+            projectId: 'test-build-verif-1',
+            framework: 'nextjs',
+            files: { 'package.json': '{}' },
+            mandatory: true, // Mandatory!
+          }),
+        });
+
+        const res = await validateBuildPOST(req);
+        assert.strictEqual(res.status, 503);
+        const data = await res.json();
+        assert.strictEqual(data.success, false);
+        assert.match(data.error, /failed closed/);
+        assert.strictEqual(data.verificationLevel, 'VERIFICATION_UNAVAILABLE');
+      } finally {
+        if (origToken) process.env.VERCEL_TOKEN = origToken;
+        if (origProj) process.env.VERCEL_PROJECT_ID = origProj;
+        if (origTeam) process.env.VERCEL_TEAM_ID = origTeam;
+      }
     });
 
     it('candidate pipeline assigns STATIC_VALIDATED level to verified candidates', async () => {

@@ -326,21 +326,45 @@ export class LocalBuildRunner implements BuildRunner {
 }
 
 /**
- * VercelSandboxRunner provides integration with Vercel Sandbox or truthfully reports
- * unavailable status. Production fails closed if credentials are not configured.
+ * VercelSandboxRunner provides integration with Vercel Sandbox microVMs.
+ * Executes real isolated dependency installation, framework builds, and HTTP smoke tests.
  */
 export class VercelSandboxRunner implements BuildRunner {
   readonly name = 'VercelSandboxRunner';
+  private sandboxInstance: any = null;
+  private preparedFiles: Record<string, string> = {};
 
   private hasCredentials(): boolean {
-    return Boolean(process.env.VERCEL_TOKEN && process.env.VERCEL_PROJECT_ID);
+    return Boolean(process.env.VERCEL_TOKEN && (process.env.VERCEL_PROJECT_ID || process.env.VERCEL_TEAM_ID));
   }
 
   async prepare(files: Record<string, string>): Promise<void> {
-    // In cloud mode, preparation bundles the files for transmission
+    this.preparedFiles = { ...files };
+    if (!this.hasCredentials()) {
+      return;
+    }
+
+    // Dynamic import @vercel/sandbox
+    const { Sandbox } = await import('@vercel/sandbox');
+    this.sandboxInstance = await Sandbox.create({
+      token: process.env.VERCEL_TOKEN!,
+      projectId: process.env.VERCEL_PROJECT_ID,
+      teamId: process.env.VERCEL_TEAM_ID,
+      timeout: 180_000,
+    });
+
+    // Write all project files into the remote sandbox filesystem
+    const fileEntries = Object.entries(files).map(([path, content]) => ({
+      path: path.startsWith('/') ? path.slice(1) : path,
+      content,
+    }));
+
+    if (fileEntries.length > 0) {
+      await this.sandboxInstance.writeFiles(fileEntries);
+    }
   }
 
-  async install(_timeoutMs?: number): Promise<BuildResult> {
+  async install(timeoutMs = 120_000): Promise<BuildResult> {
     if (!this.hasCredentials()) {
       return {
         success: false,
@@ -351,49 +375,112 @@ export class VercelSandboxRunner implements BuildRunner {
         error: 'Credentials Missing',
       };
     }
-    return {
-      success: true,
-      exitCode: 0,
-      stdout: 'Vercel remote install queued.',
-      stderr: '',
-      durationMs: 50,
-    };
-  }
 
-  async build(_timeoutMs?: number): Promise<BuildResult> {
-    if (!this.hasCredentials()) {
-      return {
-        success: false,
-        exitCode: 1,
-        stdout: '',
-        stderr: 'Verification Unavailable: Vercel credentials (VERCEL_TOKEN) are not configured.',
-        durationMs: 0,
-        error: 'Credentials Missing',
-      };
+    if (!this.sandboxInstance) {
+      await this.prepare(this.preparedFiles);
     }
-    return {
-      success: true,
-      exitCode: 0,
-      stdout: 'Vercel deployment created successfully.',
-      stderr: '',
-      durationMs: 1200,
-    };
-  }
 
-  async start(_port?: number, _timeoutMs?: number): Promise<RunningServer> {
-    if (!this.hasCredentials()) {
-      throw new Error('Verification Unavailable: Vercel credentials are not configured.');
-    }
-    return {
-      url: 'https://sandbox.vercel.run',
-      stop: async () => {},
-    };
-  }
-
-  async smokeTest(url: string, timeoutMs = 5000): Promise<SmokeTestResult> {
     const startTime = Date.now();
     try {
-      const res = await fetch(url);
+      const cmd = await this.sandboxInstance.runCommand('npm', ['install', '--prefer-offline', '--no-audit', '--no-fund'], {
+        timeout: timeoutMs,
+      });
+      const stdout = await cmd.stdout();
+      const stderr = await cmd.stderr();
+      const finished = await cmd.wait();
+      const exitCode = finished.exitCode ?? 0;
+
+      return {
+        success: exitCode === 0,
+        exitCode,
+        stdout,
+        stderr,
+        durationMs: Date.now() - startTime,
+        command: 'npm install',
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        exitCode: 1,
+        stdout: '',
+        stderr: err?.message || 'Sandbox install failed',
+        durationMs: Date.now() - startTime,
+        error: err?.message,
+      };
+    }
+  }
+
+  async build(timeoutMs = 120_000): Promise<BuildResult> {
+    if (!this.hasCredentials()) {
+      return {
+        success: false,
+        exitCode: 1,
+        stdout: '',
+        stderr: 'Verification Unavailable: Vercel credentials (VERCEL_TOKEN) are not configured.',
+        durationMs: 0,
+        error: 'Credentials Missing',
+      };
+    }
+
+    if (!this.sandboxInstance) {
+      await this.prepare(this.preparedFiles);
+    }
+
+    const startTime = Date.now();
+    try {
+      const cmd = await this.sandboxInstance.runCommand('npm', ['run', 'build'], {
+        timeout: timeoutMs,
+      });
+      const stdout = await cmd.stdout();
+      const stderr = await cmd.stderr();
+      const finished = await cmd.wait();
+      const exitCode = finished.exitCode ?? 0;
+
+      return {
+        success: exitCode === 0,
+        exitCode,
+        stdout,
+        stderr,
+        durationMs: Date.now() - startTime,
+        command: 'npm run build',
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        exitCode: 1,
+        stdout: '',
+        stderr: err?.message || 'Sandbox build failed',
+        durationMs: Date.now() - startTime,
+        error: err?.message,
+      };
+    }
+  }
+
+  async start(port = 3000, timeoutMs = 30_000): Promise<RunningServer> {
+    if (!this.hasCredentials() || !this.sandboxInstance) {
+      throw new Error('Verification Unavailable: Vercel sandbox is not active or configured.');
+    }
+
+    // Start production server or preview in background
+    const cmd = await this.sandboxInstance.runCommand('pnpm', ['start', '--port', String(port)], {
+      detached: true,
+    });
+
+    const hostUrl = `http://127.0.0.1:${port}`;
+    return {
+      url: hostUrl,
+      stop: async () => {
+        try {
+          await this.sandboxInstance.runCommand('pkill', ['-f', 'next']);
+        } catch {}
+      },
+    };
+  }
+
+  async smokeTest(url: string, timeoutMs = 10_000): Promise<SmokeTestResult> {
+    const startTime = Date.now();
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
       const text = await res.text();
       return {
         success: res.status >= 200 && res.status < 400,
@@ -411,6 +498,11 @@ export class VercelSandboxRunner implements BuildRunner {
   }
 
   async cleanup(): Promise<void> {
-    // Cleanup remote resources if necessary
+    if (this.sandboxInstance) {
+      try {
+        await this.sandboxInstance.stop();
+      } catch {}
+      this.sandboxInstance = null;
+    }
   }
 }
