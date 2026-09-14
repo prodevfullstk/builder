@@ -97,6 +97,9 @@ export interface ValidationEvidence {
     visualMismatches?: any[];
     notes?: string;
   };
+  realRuntime?: any;
+  realVisual?: any;
+  realBehavioral?: any[];
   runner?: string;
   commitRevision?: string;
 }

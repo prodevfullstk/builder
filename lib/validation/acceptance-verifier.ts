@@ -271,13 +271,14 @@ export function evaluateAcceptanceCriteria(params: {
         let interactionFound = false;
         let detail = '';
 
-        if (behavioralRun) {
-          interactionFound = runtimeContext.behavioralPassed === true;
-          detail = interactionFound
-            ? `Runtime behavioral interaction verified on running application: ${JSON.stringify(runtimeContext.behavioralDetails || {})}`
-            : 'Runtime behavioral interaction failed on running application.';
+        if (behavioralRun && runtimeContext.behavioralPassed === true) {
+          interactionFound = true;
+          detail = `Runtime behavioral interaction verified on running application: ${JSON.stringify(runtimeContext.behavioralDetails || {})}`;
+        } else if (behavioralRun && runtimeContext.behavioralPassed === false) {
+          interactionFound = false;
+          detail = 'Runtime behavioral interaction failed during live browser execution.';
         } else {
-          // Static fallback check
+          // Static behavioral signature check during static candidate validation
           for (const [filePath, content] of Object.entries(workspace)) {
             const hasMenuState = /isOpen|setIsOpen|toggleMenu|isMenuOpen|showMenu|mobileMenu/i.test(content);
             const hasTrigger = /<button[^>]*aria-label=['"][^'"]*menu['"][^>]*>|<button[^>]*onClick/i.test(content) ||
@@ -290,6 +291,9 @@ export function evaluateAcceptanceCriteria(params: {
               break;
             }
           }
+          if (!interactionFound) {
+            detail = 'Behavioral verification requires real runtime browser execution. Static code analysis is not accepted as behavioral proof.';
+          }
         }
 
         results.push({
@@ -301,7 +305,7 @@ export function evaluateAcceptanceCriteria(params: {
           status: interactionFound ? 'passed' : 'failed',
           message: interactionFound
             ? `Behavioral check for '${target}' passed: ${detail}`
-            : `Behavioral check for '${target}' failed: interactive state/trigger not detected in candidate workspace.`,
+            : `Behavioral check for '${target}' failed: ${detail}`,
         });
         if (!interactionFound) diagnostics.push(`Acceptance criteria failure: interaction '${target}' not detected`);
         break;

@@ -203,6 +203,71 @@ export async function commitVerifiedCandidate(
     };
   }
 
+  // 8. Real Runtime Evidence Verification (Gate A)
+  if (validationEvidence.realRuntime) {
+    const rt = validationEvidence.realRuntime;
+    if (!rt.healthy || (rt.httpStatus !== undefined && (rt.httpStatus < 200 || rt.httpStatus >= 400))) {
+      return {
+        success: false,
+        committed: false,
+        error: `Runtime Evidence Verification Failed: Application failed runtime smoke check (HTTP: ${rt.httpStatus || 'error'}).`,
+      };
+    }
+    if (rt.candidateHash && rt.candidateHash !== actualHash) {
+      return {
+        success: false,
+        committed: false,
+        error: `Runtime Evidence Mismatch: candidateHash '${rt.candidateHash}' does not match candidate '${actualHash}'.`,
+      };
+    }
+    if (rt.projectId && rt.projectId !== projectId) {
+      return {
+        success: false,
+        committed: false,
+        error: `Runtime Evidence Project Mismatch: '${rt.projectId}' does not match target project '${projectId}'.`,
+      };
+    }
+  }
+
+  // 9. Real Visual Evidence Verification (Gate B)
+  if (validationEvidence.realVisual) {
+    const vis = validationEvidence.realVisual;
+    if (vis.comparisonStatus !== 'VERIFIED_MATCH') {
+      return {
+        success: false,
+        committed: false,
+        error: `Visual Evidence Verification Failed: Status '${vis.comparisonStatus}' is not certified match.`,
+      };
+    }
+    if (vis.candidateHash && vis.candidateHash !== actualHash) {
+      return {
+        success: false,
+        committed: false,
+        error: `Visual Evidence Mismatch: candidateHash '${vis.candidateHash}' does not match candidate '${actualHash}'.`,
+      };
+    }
+  }
+
+  // 10. Real Behavioral Evidence Verification (Gate C)
+  if (validationEvidence.realBehavioral && Array.isArray(validationEvidence.realBehavioral)) {
+    for (const b of validationEvidence.realBehavioral) {
+      if (!b.passed) {
+        return {
+          success: false,
+          committed: false,
+          error: `Behavioral Verification Failed on '${b.target}': ${b.observedResult}`,
+        };
+      }
+      if (b.candidateHash && b.candidateHash !== actualHash) {
+        return {
+          success: false,
+          committed: false,
+          error: `Behavioral Evidence Mismatch: candidateHash '${b.candidateHash}' does not match candidate '${actualHash}'.`,
+        };
+      }
+    }
+  }
+
   // 4. Server-Side Atomic Compare-And-Swap (CAS)
   const casResult = updateServerProjectWithCas(projectId, expectedRevision, {
     files: candidateFiles,

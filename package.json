@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "node ./node_modules/eslint/bin/eslint.js app components lib",
-    "test": "node -r ./test/test-register.js --test test/auth.test.ts test/ownership.test.ts test/framework-validation.test.ts test/candidate-pipeline.test.ts test/github-export.test.ts test/sandbox-status.test.ts test/mcp-security.test.ts test/mutation-boundary.test.ts test/transactional-commit.test.ts test/requirements-spec.test.ts test/build-runner.test.ts test/phase3-security.test.ts test/phase4-hardening.test.ts test/phase5-certification.test.ts test/ai-correctness-scenarios.test.ts test/ai-correctness-adversarial.test.ts test/gate-closure-gates.test.ts",
+    "test": "node -r ./test/test-register.js --test test/auth.test.ts test/ownership.test.ts test/framework-validation.test.ts test/candidate-pipeline.test.ts test/github-export.test.ts test/sandbox-status.test.ts test/mcp-security.test.ts test/mutation-boundary.test.ts test/transactional-commit.test.ts test/requirements-spec.test.ts test/build-runner.test.ts test/phase3-security.test.ts test/phase4-hardening.test.ts test/phase5-certification.test.ts test/ai-correctness-scenarios.test.ts test/ai-correctness-adversarial.test.ts test/gate-closure-gates.test.ts test/ai-final-closure.test.ts",
     "test:microvm": "node -r ./test/test-register.js --test test/live-microvm-verification.ts"
   },
   "dependencies": {
@@ -41,6 +41,7 @@
     "@types/react-dom": "^19.0.2",
     "eslint": "^9.17.0",
     "eslint-config-next": "^15.1.12",
+    "playwright": "^1.63.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2"

@@ -351,6 +351,7 @@ export class VercelSandboxRunner implements BuildRunner {
       projectId: process.env.VERCEL_PROJECT_ID,
       teamId: process.env.VERCEL_TEAM_ID,
       timeout: 180_000,
+      ports: [3000, 3001, 4173, 5173],
     });
 
     // Write all project files into the remote sandbox filesystem
@@ -461,17 +462,54 @@ export class VercelSandboxRunner implements BuildRunner {
       throw new Error('Verification Unavailable: Vercel sandbox is not active or configured.');
     }
 
-    // Start production server or preview in background
-    const cmd = await this.sandboxInstance.runCommand('pnpm', ['start', '--port', String(port)], {
+    let startCmd = 'npm';
+    let startArgs = ['start', '--', '-p', String(port)];
+
+    if (this.preparedFiles && this.preparedFiles['package.json']) {
+      try {
+        const pkg = JSON.parse(this.preparedFiles['package.json']);
+        if (pkg.dependencies?.astro || pkg.devDependencies?.astro) {
+          startArgs = ['run', 'preview', '--', '--port', String(port), '--host', '0.0.0.0'];
+        } else if (pkg.dependencies?.vite || pkg.devDependencies?.vite) {
+          startArgs = ['run', 'preview', '--', '--port', String(port), '--host', '0.0.0.0'];
+        }
+      } catch {}
+    }
+
+    const cmd = await this.sandboxInstance.runCommand({
+      command: startCmd,
+      args: startArgs,
       detached: true,
     });
 
-    const hostUrl = `http://127.0.0.1:${port}`;
+    let hostUrl: string;
+    try {
+      hostUrl = this.sandboxInstance.domain(port);
+    } catch {
+      hostUrl = `http://127.0.0.1:${port}`;
+    }
+
+    // Polling for server readiness
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch(hostUrl, { signal: AbortSignal.timeout(2000) });
+        if (res.status >= 200 && res.status < 500) {
+          break;
+        }
+      } catch {
+        await new Promise((r) => setTimeout(r, 600));
+      }
+    }
+
     return {
       url: hostUrl,
       stop: async () => {
         try {
-          await this.sandboxInstance.runCommand('pkill', ['-f', 'next']);
+          if (cmd && typeof (cmd as any).stop === 'function') {
+            await (cmd as any).stop();
+          }
+          await this.sandboxInstance.runCommand('pkill', ['-f', 'node']);
         } catch {}
       },
     };

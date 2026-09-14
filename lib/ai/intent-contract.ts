@@ -1,4 +1,5 @@
 import { AcceptanceCriterion } from '../validation/acceptance-verifier';
+import { classifySemanticIntent } from './semantic-classifier';
 
 export type IntentAction =
   | 'CREATE_PROJECT'
@@ -182,40 +183,19 @@ export function parseIntentFromPrompt(params: {
   const verMatch = prompt.match(/(?:next\.?js|vite|react|astro)\s*(?:v(?:ersion)?)?\s*(\d+(?:\.\d+)?)/i);
   const frameworkVersion = verMatch ? verMatch[1] : undefined;
 
-  // Language agnostic semantic action classification
-  let action: IntentAction;
-  const isImageTask = hasImage || (imageContext && imageContext.hasImage);
+  // Language agnostic semantic action classification via authoritative semantic classifier (Gate D)
+  const isImageTask = Boolean(hasImage || (imageContext && imageContext.hasImage));
+  const semanticResult = classifySemanticIntent(trimmed, {
+    fileCount,
+    hasImage: isImageTask,
+    currentFiles,
+    activeFile,
+    framework: detectedFramework,
+  });
 
-  // Read-only question/explain detection
-  const isQuestion = /^(?:what|how|why|where|who|when|which|can\s+you\s+explain|explain|describe)\b/i.test(trimmed) &&
-    !/\b(create|build|make|add|fix|change|update|delete|remove|refactor|smaller|bigger)\b/i.test(trimmed);
-
-  const isInspect = /^(?:inspect|audit|check\s+security|scan|list\s+files)\b/i.test(trimmed);
-
-  if (isQuestion) {
-    action = trimmed.toLowerCase().startsWith('explain') ? 'EXPLAIN' : 'QUESTION';
-  } else if (isInspect) {
-    action = 'INSPECT';
-  } else if (isImageTask) {
-    action = fileCount === 0 || /\b(recreate|build|create|from\s+scratch)\b/i.test(trimmed)
-      ? 'VISUAL_RECREATE'
-      : 'VISUAL_EDIT';
-  } else if (fileCount === 0 || /\b(create|build|generate|scaffold|new\s+website|new\s+project|new\s+app)\b/i.test(trimmed)) {
-    action = 'CREATE_PROJECT';
-  } else if (/\b(fix|bug|broken|error|resolve|repair|fails?|crash)\b/i.test(trimmed)) {
-    action = 'FIX_BUG';
-  } else if (/\b(refactor|clean\s*up|reorganize|structure|rename)\b/i.test(trimmed)) {
-    action = 'REFACTOR';
-  } else if (/\b(add|implement|new\s+feature|include|integrate|support)\b/i.test(trimmed)) {
-    action = 'ADD_FEATURE';
-  } else if (/\b(make|change|update|modify|smaller|larger|adjust|style|replace|switch)\b/i.test(trimmed)) {
-    action = 'MODIFY_FEATURE';
-  } else if (/\b(continue|proceed|next\s+step|keep\s+going)\b/i.test(trimmed)) {
-    action = 'CONTINUE_BUILD';
-  } else {
-    // Default mutating intent based on workspace state
-    action = fileCount === 0 ? 'CREATE_PROJECT' : 'MODIFY_FEATURE';
-  }
+  const action: IntentAction = semanticResult.action;
+  const detectedLanguage = semanticResult.language;
+  const dynamicConfidence = semanticResult.confidence;
 
   // Extract candidate target files from prompt or activeFile
   const targetFiles: string[] = [];
@@ -364,7 +344,7 @@ export function parseIntentFromPrompt(params: {
   return {
     id,
     action,
-    language: 'auto',
+    language: detectedLanguage,
     framework: detectedFramework,
     frameworkVersion,
     targetDescription: trimmed,
@@ -377,7 +357,7 @@ export function parseIntentFromPrompt(params: {
     ],
     acceptanceCriteria,
     imageContext,
-    confidence: 0.95,
+    confidence: dynamicConfidence,
     clarificationRequired: false,
     timestamp,
   };
