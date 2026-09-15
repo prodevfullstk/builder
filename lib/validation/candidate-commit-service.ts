@@ -15,7 +15,7 @@ export interface CandidateCommitParams {
   candidateHash: string;
   validationEvidence: ValidationEvidence;
   userId: string;
-  authMode?: "real" | "demo";
+  authMode?: "real";
   candidateTimestamp?: number;
 }
 

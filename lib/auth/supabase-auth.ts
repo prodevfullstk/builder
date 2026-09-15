@@ -125,7 +125,7 @@ export const useAuthStore = create<AuthState>()(
         } else {
           set({
             isLoading: false,
-            authError: 'Supabase authentication is not configured in this environment. Please configure Supabase or use Demo Login.',
+            authError: 'Supabase authentication is not configured in this environment. Please check your Supabase environment variables.',
           });
         }
       },
@@ -134,7 +134,7 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, authError: null });
 
         if (!isRealSupabaseConfigured) {
-          const errorMsg = 'Supabase authentication is not configured. Use 1-Click Demo Login to preview the builder.';
+          const errorMsg = 'Supabase authentication is not configured. Please configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.';
           set({ isLoading: false, authError: errorMsg });
           return { success: false, error: errorMsg };
         }
@@ -227,6 +227,11 @@ export const useAuthStore = create<AuthState>()(
           otpSent: false,
           authError: null,
         });
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.removeItem('opendork_auth_session');
+          } catch {}
+        }
       },
     }),
     {
@@ -236,9 +241,40 @@ export const useAuthStore = create<AuthState>()(
         accessToken: state.accessToken,
         isAuthenticated: state.isAuthenticated,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          // Strictly purge legacy demo users or sessions without real Bearer access token
+          if (
+            !state.accessToken ||
+            !state.user ||
+            state.user.authMode !== 'real' ||
+            state.user.id === 'demo-user' ||
+            (state.user as any).provider === 'demo'
+          ) {
+            state.user = null;
+            state.accessToken = null;
+            state.isAuthenticated = false;
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.removeItem('opendork_auth_session');
+              } catch {}
+            }
+          }
+        }
+      },
     }
   )
 );
+
+// Immediate startup check in browser to clean legacy demo sessions
+if (typeof window !== 'undefined') {
+  try {
+    const raw = localStorage.getItem('opendork_auth_session');
+    if (raw && (raw.includes('"demo-user"') || raw.includes('"authMode":"demo"') || raw.includes('"provider":"demo"'))) {
+      localStorage.removeItem('opendork_auth_session');
+    }
+  } catch {}
+}
 
 /**
  * Centralized helper for client-side API requests.

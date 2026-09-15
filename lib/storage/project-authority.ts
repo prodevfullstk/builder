@@ -48,18 +48,6 @@ export interface OwnershipVerificationResult {
 // In-memory authority store for active server session / local fallback
 const serverProjectRegistry: Map<string, AuthoritativeProject> = new Map();
 
-// Seed initial demo project with explicit owner
-seedAuthoritativeProject(
-  "demo-saas",
-  "system-demo",
-  "AI Voice Agent SaaS",
-  "nextjs",
-  {
-    "package.json": JSON.stringify({ name: "ai-voice-saas", dependencies: { react: "^19.0.0", next: "^15.0.0" } }, null, 2),
-    "app/page.tsx": `'use client';\n\nexport default function Page() { return <div>Welcome to AI Voice SaaS</div>; }`,
-  }
-);
-
 /**
  * Register or update a project in the server authority registry
  */
@@ -159,9 +147,8 @@ export function getServerProject(projectId: string): AuthoritativeProject | null
 export function listServerProjectsForOwner(ownerId: string): AuthoritativeProject[] {
   if (!ownerId) return [];
   const list: AuthoritativeProject[] = [];
-  const isDemo = ownerId === 'demo-user' || ownerId === 'system-demo';
   for (const proj of serverProjectRegistry.values()) {
-    if (proj.owner_id === ownerId || (isDemo && proj.owner_id === 'system-demo')) {
+    if (proj.owner_id === ownerId) {
       list.push(proj);
     }
   }
@@ -179,7 +166,7 @@ export function listServerProjectsForOwner(ownerId: string): AuthoritativeProjec
 export async function verifyProjectOwnership(
   projectId: string | null | undefined,
   authenticatedUserId: string,
-  authMode?: 'real' | 'demo'
+  authMode?: 'real'
 ): Promise<OwnershipVerificationResult> {
   // 1. Missing project ID validation
   if (!projectId || typeof projectId !== 'string' || !projectId.trim()) {
@@ -202,22 +189,8 @@ export async function verifyProjectOwnership(
     };
   }
 
-  // Security Invariant (SEC-301): Demo identities can NEVER access production projects
-  const isDemoUser = authMode === 'demo' || authenticatedUserId === 'demo-user' || authenticatedUserId === 'system-demo';
-  const isDemoProject = project.owner_id === 'system-demo' || project.owner_id === 'demo-user';
-
-  if (isDemoUser && !isDemoProject) {
-    return {
-      authorized: false,
-      error: 'Forbidden: Demo identities cannot access production projects.',
-      status: 403,
-    };
-  }
-
-  const isDemoAuthorized = isDemoUser && isDemoProject;
-
   // 3. Ownership verification
-  if (project.owner_id !== authenticatedUserId && !isDemoAuthorized) {
+  if (project.owner_id !== authenticatedUserId) {
     return {
       authorized: false,
       error: 'Forbidden: You do not have permission to access or modify this project.',

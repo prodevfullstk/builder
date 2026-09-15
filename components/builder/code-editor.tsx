@@ -265,7 +265,7 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
         method: 'POST',
         headers: getClientAuthHeaders(),
         body: JSON.stringify({
-          projectId: projectId || 'demo-saas',
+          projectId: projectId || 'workspace',
           expectedRevision: baselineRevision,
           candidateFiles,
           candidateHash: evalResult.evidence.candidateHash,

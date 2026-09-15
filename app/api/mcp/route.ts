@@ -35,7 +35,7 @@ function getCorsHeaders(req: NextRequest) {
 
   const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-MCP-Version, X-Auth-Mode, X-Demo-User-Id",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-MCP-Version",
     "Vary": "Origin",
   };
 

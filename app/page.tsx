@@ -28,6 +28,7 @@ import { Framework } from '@/lib/store/project-store';
 import { CreditsModal } from '@/components/credits/credits-modal';
 import { UserMenu } from '@/components/auth/user-menu';
 import { AuthModal } from '@/components/auth/auth-modal';
+import { useAuthStore } from '@/lib/auth/supabase-auth';
 
 const QUICK_CATEGORIES = [
   {
@@ -105,6 +106,13 @@ export default function HomePage() {
     const finalPrompt = (customPrompt || prompt).trim();
     if (!finalPrompt && !attachedImage) return;
 
+    // Enforce Supabase authentication before launching builder
+    const authState = useAuthStore.getState();
+    if (!authState.isAuthenticated || !authState.accessToken) {
+      authState.setAuthModalOpen(true);
+      return;
+    }
+
     if (attachedImage && typeof window !== 'undefined') {
       try {
         sessionStorage.setItem('opendork_init_image', attachedImage);
@@ -121,6 +129,11 @@ export default function HomePage() {
   };
 
   const handleOpenProject = (id: string) => {
+    const authState = useAuthStore.getState();
+    if (!authState.isAuthenticated || !authState.accessToken) {
+      authState.setAuthModalOpen(true);
+      return;
+    }
     router.push(`/builder?id=${id}`);
   };
 

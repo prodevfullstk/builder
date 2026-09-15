@@ -27,6 +27,7 @@ import { ProjectsModal } from './projects-modal';
 import { GitHubPushModal } from './github-push-modal';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { UserMenu } from '@/components/auth/user-menu';
 
 export function BuilderHeader() {
   const {
@@ -280,6 +281,10 @@ export function BuilderHeader() {
             <Download className="w-3.5 h-3.5 mr-1.5" />
             {isExporting ? 'Exporting...' : 'Export ZIP'}
           </Button>
+
+          <div className="ml-1 pl-1 border-l border-zinc-800">
+            <UserMenu />
+          </div>
         </div>
       </header>
 

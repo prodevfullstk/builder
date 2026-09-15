@@ -1,8 +1,7 @@
 /**
  * Sliding-window Rate Limiter (SEC-305 / P1-6)
  *
- * Implements sliding-window rate limiting for anonymous/demo and authenticated callers:
- * - Demo mode: 10 requests per IP per hour
+ * Implements sliding-window rate limiting for authenticated callers:
  * - Authenticated users: 60 requests per user per hour
  */
 

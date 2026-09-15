@@ -78,11 +78,10 @@ export async function verifySupabaseToken(token: string): Promise<AuthenticatedU
 /**
  * Server-side authentication helper.
  * Derives user identity strictly from the cryptographically verified Supabase session token.
- * Rejects missing sessions, invalid sessions, and demo users for protected operations.
+ * Rejects missing sessions, invalid sessions, and unverified users for all operations.
  */
 export async function authenticateRequest(
-  req: NextRequest | Request,
-  options: { allowDemo?: boolean } = {}
+  req: NextRequest | Request
 ): Promise<AuthResult> {
   const getHeader = (name: string): string | null => {
     if (!req.headers) return null;

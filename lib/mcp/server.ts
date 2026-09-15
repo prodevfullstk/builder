@@ -38,7 +38,7 @@ function makeError(
 
 export interface McpRequestContext {
   userId?: string;
-  authMode?: 'real' | 'demo';
+  authMode?: 'real';
   authError?: string;
 }
 
@@ -269,7 +269,7 @@ async function executeMcpTool(
       return makeError(
         -32001,
         `Unauthorized: ${reason}`,
-        "Provide a valid Bearer token in the Authorization header or X-Auth-Mode: demo.",
+        "Provide a valid Bearer token in the Authorization header.",
         false,
         401
       );
@@ -279,8 +279,7 @@ async function executeMcpTool(
   // 2. Project-scoped tools execution
   switch (name) {
     case "list_projects": {
-      const isDemo = context?.authMode === 'demo' || context?.userId === 'demo-user';
-      const ownerId = isDemo ? 'demo-user' : context!.userId!;
+      const ownerId = context!.userId!;
       const projects = listServerProjectsForOwner(ownerId).map((p) => ({
         id: p.id,
         name: p.name,
