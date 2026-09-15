@@ -20,8 +20,12 @@ export interface AuthFailure {
 
 export type AuthResult = AuthContext | AuthFailure;
 
-const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/+$/, '');
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const DEFAULT_SUPABASE_URL = 'https://gmstovafjvsmsscfynqh.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc3RvdmFmanZzbXNzY2Z5bnFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMDcwMzcsImV4cCI6MjEwNDc4MzAzN30.rPvAJ-4stmHY9s4pQxuNKvHIROXXbc1yg6yVR6hsxVI';
+
+const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).replace(/\/+$/, '');
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
 
 /**
  * Validates a Supabase access token against Supabase Auth API
