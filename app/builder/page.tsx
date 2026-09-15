@@ -22,6 +22,8 @@ import { parseToolCalls, executeToolCalls } from "@/lib/ai/mcp-executor";
 import { useCreditsStore } from "@/lib/store/credits-store";
 import { evaluateCandidateChanges } from "@/lib/validation/candidate-pipeline";
 import { synthesizeProjectRequirements } from "@/lib/ai/requirements-generator";
+import { AuthModal } from "@/components/auth/auth-modal";
+import { useAuthStore, getClientAuthHeaders } from "@/lib/auth/supabase-auth";
 
 function BuilderWorkspace() {
   const {
@@ -111,6 +113,18 @@ function BuilderWorkspace() {
     // If navigated with ?prompt=..., trigger AI generation immediately
     if (initialPrompt && status === "idle") {
       const runInitialGeneration = async () => {
+        // Enforce authentic Supabase session before starting project build
+        const authState = useAuthStore.getState();
+        if (!authState.isAuthenticated || !authState.accessToken) {
+          addMessage({
+            role: "assistant",
+            content: "🔒 Please sign in with your account to start generating and developing this project.",
+          });
+          authState.setAuthModalOpen(true);
+          setStatus("idle");
+          return;
+        }
+
         // Deduct points for new build
         const hasCredits = useCreditsStore.getState().deductCredits('NEW_PROJECT_BUILD');
         if (!hasCredits) {
@@ -153,7 +167,7 @@ function BuilderWorkspace() {
         try {
           const response = await fetch("/api/agent", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: getClientAuthHeaders(),
             body: JSON.stringify({
               message: initialPrompt,
               image: initialImage,
@@ -308,6 +322,9 @@ function BuilderWorkspace() {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-zinc-950 overflow-hidden text-zinc-100">
+      {/* Auth Modal for Sign In */}
+      <AuthModal />
+
       {/* Top Header with Persistence & Projects Switcher */}
       <BuilderHeader />
 

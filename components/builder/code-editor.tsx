@@ -5,7 +5,7 @@ import Editor, { OnMount } from '@monaco-editor/react';
 import { useProjectStore } from '@/lib/store/project-store';
 import { evaluateCandidateChanges } from '@/lib/validation/candidate-pipeline';
 import { StreamEventDecoder } from '@/lib/ai/stream-events';
-import { getClientAuthHeaders } from '@/lib/auth/supabase-auth';
+import { useAuthStore, getClientAuthHeaders } from '@/lib/auth/supabase-auth';
 import { FileCode, AlertCircle, Copy, Check, FilePlus, Sparkles, Send, X, Loader2 } from 'lucide-react';
 
 interface ErrorBoundaryProps {
@@ -153,6 +153,14 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
 
   const handleAskAI = async () => {
     if (!aiPrompt.trim() || !activeFile || aiLoading) return;
+
+    const authState = useAuthStore.getState();
+    if (!authState.isAuthenticated || !authState.accessToken) {
+      setAiError('Please sign in to edit code with AI.');
+      authState.setAuthModalOpen(true);
+      return;
+    }
+
     setAiLoading(true);
     setAiError(null);
     // CONC-501: Capture baseline revision before starting asynchronous AI edit

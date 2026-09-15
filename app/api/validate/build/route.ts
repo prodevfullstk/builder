@@ -9,10 +9,10 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
-    const authResult = await authenticateRequest(req, { allowDemo: true });
+    const authResult = await authenticateRequest(req);
     if (authResult.error || !authResult.user) {
       return NextResponse.json(
-        { success: false, error: authResult.error || 'Unauthorized' },
+        { success: false, error: authResult.error || 'Authentication required. Please sign in to validate builds.' },
         { status: authResult.status || 401 }
       );
     }

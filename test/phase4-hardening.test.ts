@@ -146,7 +146,7 @@ describe('Antigravity Phase 4 — Production Verification, Concurrency & Sandbox
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Auth-Mode': 'demo',
+          'Authorization': 'Bearer test-token-demo-sandbox-traversal',
         },
         body: JSON.stringify({
           action: 'start',
@@ -207,7 +207,7 @@ describe('Antigravity Phase 4 — Production Verification, Concurrency & Sandbox
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Auth-Mode': 'demo',
+            'Authorization': 'Bearer test-token-demo-user',
           },
           body: JSON.stringify({
             projectId: 'test-build-verif-1',
@@ -244,7 +244,7 @@ describe('Antigravity Phase 4 — Production Verification, Concurrency & Sandbox
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Auth-Mode': 'demo',
+            'Authorization': 'Bearer test-token-demo-user',
           },
           body: JSON.stringify({
             projectId: 'test-build-verif-1',

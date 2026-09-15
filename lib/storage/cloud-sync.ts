@@ -17,16 +17,8 @@ export async function syncLocalProjectsToCloud(
   user: AuthUser,
   accessToken?: string
 ): Promise<CloudSyncResult> {
-  if (!user) {
-    return { syncedCount: 0, error: 'User is not authenticated.' };
-  }
-
-  // Demo users are isolated and cannot mutate cloud storage
-  if (user.authMode === 'demo') {
-    return {
-      syncedCount: 0,
-      error: 'Demo user identities are isolated and cannot sync to production cloud.',
-    };
+  if (!user || !accessToken) {
+    return { syncedCount: 0, error: 'User is not authenticated or missing access token.' };
   }
 
   const localProjects = listSavedProjects();

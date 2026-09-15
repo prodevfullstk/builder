@@ -22,7 +22,6 @@ export function AuthModal() {
     loginWithOAuth,
     loginWithEmail,
     verifyOtp,
-    loginAsDemo,
     isLoading,
     otpSent,
     authError,
@@ -60,11 +59,6 @@ export function AuthModal() {
         await syncLocalProjectsToCloud(user, token);
       }
     }
-  };
-
-  const handleDemoSignIn = () => {
-    clearAuthError();
-    loginAsDemo('Guest Creator', 'creator@opendork.com');
   };
 
   return (
@@ -242,20 +236,6 @@ export function AuthModal() {
               </div>
             </form>
           )}
-
-          {/* Quick Demo Login CTA */}
-          <div className="pt-2 border-t border-zinc-800/80 text-center">
-            <button
-              type="button"
-              onClick={handleDemoSignIn}
-              className="text-xs text-zinc-400 hover:text-white transition-colors underline underline-offset-4 cursor-pointer"
-            >
-              Or click here for 1-Click Explicit Demo Login ➔
-            </button>
-            <p className="text-[10px] text-zinc-500 mt-1">
-              Demo mode runs locally only and does not persist to production cloud.
-            </p>
-          </div>
         </div>
 
         {/* Footer info */}

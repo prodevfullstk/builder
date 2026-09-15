@@ -26,7 +26,7 @@ import { parseToolCalls, executeToolCalls } from '@/lib/ai/mcp-executor';
 import { parseFinalOutput } from '@/lib/ai/code-parser';
 import { evaluateCandidateChanges } from '@/lib/validation/candidate-pipeline';
 import { bundleProjectWithEsbuild } from '@/lib/preview/esbuild-compiler';
-import { getClientAuthHeaders } from '@/lib/auth/supabase-auth';
+import { useAuthStore, getClientAuthHeaders } from '@/lib/auth/supabase-auth';
 
 // Dynamically import sandbox engines with ssr: false
 const VercelPreview = dynamic(
@@ -76,6 +76,14 @@ export function PreviewPane() {
   // Handle autonomous AI repair for preview errors
   const handleAutoFix = async () => {
     if (!runtimeError || isFixing) return;
+
+    const authState = useAuthStore.getState();
+    if (!authState.isAuthenticated || !authState.accessToken) {
+      setRuntimeError('Please sign in to run AI auto-fix.');
+      authState.setAuthModalOpen(true);
+      return;
+    }
+
     if (autoFixAttempts >= 2) {
       addLog('[Auto-Fix] Max consecutive auto-fix attempts (2) reached. Please check the code manually.');
       return;

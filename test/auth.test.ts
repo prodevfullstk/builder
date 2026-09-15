@@ -42,20 +42,20 @@ describe('Server Authentication & Token Validation', () => {
     assert.strictEqual(result.status, 401);
   });
 
-  it('verifies demo identity is rejected on protected operations without allowDemo', async () => {
+  it('strictly rejects demo/anonymous header X-Auth-Mode: demo with HTTP 401', async () => {
     const req = new Request('http://localhost/api/test', {
       headers: {
         'X-Auth-Mode': 'demo',
       },
     });
 
-    const result = await authenticateRequest(req, { allowDemo: false });
+    const result = await authenticateRequest(req);
     assert.strictEqual(result.user, undefined);
-    assert.strictEqual(result.status, 403);
-    assert.match(result.error || '', /Demo identities are not authorized/i);
+    assert.strictEqual(result.status, 401);
+    assert.match(result.error || '', /Anonymous and demo access is disabled/i);
   });
 
-  it('verifies demo identity is accepted and strictly bound to deterministic demo-user (SEC-301)', async () => {
+  it('strictly rejects demo header with spoofed user id', async () => {
     const req = new Request('http://localhost/api/test', {
       headers: {
         'X-Auth-Mode': 'demo',
@@ -63,26 +63,17 @@ describe('Server Authentication & Token Validation', () => {
       },
     });
 
-    const result = await authenticateRequest(req, { allowDemo: true });
-    assert.ok(result.user);
-    // Security Invariant (SEC-301): Client cannot spoof arbitrary user ID via header
-    assert.strictEqual(result.user?.id, 'demo-user');
-    assert.strictEqual(result.user?.authMode, 'demo');
+    const result = await authenticateRequest(req);
+    assert.strictEqual(result.user, undefined);
+    assert.strictEqual(result.status, 401);
+    assert.match(result.error || '', /Anonymous and demo access is disabled/i);
   });
 
-  it('distinguishes real auth from demo auth in client auth store', () => {
+  it('maintains verified Supabase authentication in client auth store', () => {
     const store = useAuthStore.getState();
     // Initially unauthenticated
     assert.strictEqual(store.isAuthenticated, false);
     assert.strictEqual(store.accessToken, null);
-
-    // Explicit demo login
-    store.loginAsDemo('Test Demo User', 'test-demo@example.com');
-    const demoState = useAuthStore.getState();
-    assert.strictEqual(demoState.isAuthenticated, true);
-    assert.strictEqual(demoState.user?.authMode, 'demo');
-    assert.strictEqual(demoState.user?.provider, 'demo');
-    assert.strictEqual(demoState.accessToken, null); // No real Supabase token for demo
 
     // Explicit real session set
     store.setSession(
@@ -113,24 +104,23 @@ describe('Server Authentication & Token Validation', () => {
     assert.strictEqual(afterState.isLoading, false);
   });
 
-  it('generates demo auth headers when client has no access token', async () => {
+  it('omits Authorization header when client has no access token', async () => {
     await useAuthStore.getState().logout();
     const headers = getClientAuthHeaders();
     assert.strictEqual(headers['Content-Type'], 'application/json');
-    assert.strictEqual(headers['X-Auth-Mode'], 'demo');
+    assert.strictEqual(headers['X-Auth-Mode'], undefined);
     assert.strictEqual(headers['Authorization'], undefined);
 
-    // Verify authenticateRequest accepts these headers when allowDemo is true
+    // Verify authenticateRequest strictly rejects these headers
     const req = new Request('http://localhost/api/agent', {
       headers,
     });
-    const authResult = await authenticateRequest(req, { allowDemo: true });
-    assert.ok(authResult.user);
-    assert.strictEqual(authResult.user?.authMode, 'demo');
-    assert.strictEqual(authResult.user?.id, 'demo-user');
+    const authResult = await authenticateRequest(req);
+    assert.strictEqual(authResult.user, undefined);
+    assert.strictEqual(authResult.status, 401);
   });
 
-  it('generates Bearer authorization headers when client has an active access token', () => {
+  it('attaches Bearer authorization headers when client has an active access token', () => {
     useAuthStore.getState().setSession(
       {
         id: 'user-xyz',

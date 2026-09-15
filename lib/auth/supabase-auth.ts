@@ -6,8 +6,8 @@ export interface AuthUser {
   email: string;
   name: string;
   avatar_url?: string;
-  provider: 'google' | 'github' | 'email' | 'demo';
-  authMode: 'real' | 'demo';
+  provider: 'google' | 'github' | 'email';
+  authMode: 'real';
   created_at: string;
 }
 
@@ -27,7 +27,6 @@ export interface AuthState {
   loginWithOAuth: (provider: 'google' | 'github') => Promise<void>;
   loginWithEmail: (email: string) => Promise<{ success: boolean; error?: string }>;
   verifyOtp: (email: string, token: string) => Promise<{ success: boolean; error?: string }>;
-  loginAsDemo: (name?: string, email?: string) => void;
   logout: () => Promise<void>;
   setSession: (user: AuthUser, accessToken: string) => void;
 }
@@ -209,29 +208,6 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      loginAsDemo: (name = 'Pro Developer', email = 'developer@opendork.com') => {
-        const seed = Math.random().toString(36).substring(2, 7);
-        const demoUser: AuthUser = {
-          id: 'demo_' + Date.now().toString(36) + '_' + seed,
-          name,
-          email,
-          avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`,
-          provider: 'demo',
-          authMode: 'demo',
-          created_at: new Date().toISOString(),
-        };
-
-        set({
-          user: demoUser,
-          accessToken: null,
-          isAuthenticated: true,
-          isAuthModalOpen: false,
-          isLoading: false,
-          otpSent: false,
-          authError: null,
-        });
-      },
-
       setSession: (user: AuthUser, accessToken: string) => {
         set({
           user,
@@ -266,8 +242,7 @@ export const useAuthStore = create<AuthState>()(
 
 /**
  * Centralized helper for client-side API requests.
- * Attaches Supabase Bearer token if the user is authenticated,
- * or attaches X-Auth-Mode: demo for unauthenticated/demo visitors.
+ * Attaches verified Supabase Bearer token if the user is authenticated.
  */
 export function getClientAuthHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
   const token = useAuthStore.getState().accessToken;
@@ -277,8 +252,6 @@ export function getClientAuthHeaders(extraHeaders: Record<string, string> = {}):
   };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
-  } else {
-    headers['X-Auth-Mode'] = 'demo';
   }
   return headers;
 }

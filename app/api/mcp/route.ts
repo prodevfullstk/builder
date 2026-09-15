@@ -94,9 +94,8 @@ export async function POST(req: NextRequest) {
     // Extract authenticated context for user-owned operations
     let context: McpRequestContext | undefined = undefined;
     const authHeader = req.headers.get("authorization");
-    const authModeHeader = req.headers.get("x-auth-mode");
-    if (authHeader || authModeHeader === "demo") {
-      const authResult = await authenticateRequest(req, { allowDemo: true });
+    if (authHeader) {
+      const authResult = await authenticateRequest(req);
       if (authResult.user) {
         context = {
           userId: authResult.user.id,

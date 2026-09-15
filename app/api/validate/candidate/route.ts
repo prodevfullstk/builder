@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { authenticateRequest } from "@/lib/auth/server-auth";
 import { commitVerifiedCandidate } from "@/lib/validation/candidate-commit-service";
 
@@ -7,10 +7,10 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const authResult = await authenticateRequest(req, { allowDemo: true });
+    const authResult = await authenticateRequest(req);
     if (authResult.error || !authResult.user) {
       return NextResponse.json(
-        { success: false, error: authResult.error || "Unauthorized" },
+        { success: false, error: authResult.error || "Authentication required. Please sign in to commit candidates." },
         { status: authResult.status || 401 }
       );
     }

@@ -39,7 +39,7 @@ import { useCreditsStore, CreditAction } from '@/lib/store/credits-store';
 import { evaluateCandidateChanges } from '@/lib/validation/candidate-pipeline';
 import { parseIntentFromPrompt, MUTATING_INTENT_ACTIONS } from '@/lib/ai/intent-contract';
 import { StreamEventDecoder } from '@/lib/ai/stream-events';
-import { getClientAuthHeaders } from '@/lib/auth/supabase-auth';
+import { useAuthStore, getClientAuthHeaders } from '@/lib/auth/supabase-auth';
 
 interface ChatPanelProps {
   onGenerateStart?: () => void;
@@ -139,6 +139,17 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
   const handleSubmit = async (promptText: string) => {
     const query = promptText.trim();
     if ((!query && !attachedImage) || status === 'generating') return;
+
+    // Mandatory Authentication Gate: Prompt submission requires active Supabase session
+    const authState = useAuthStore.getState();
+    if (!authState.isAuthenticated || !authState.accessToken) {
+      addMessage({
+        role: 'assistant',
+        content: '🔒 Please sign in with your account to send messages, generate code, or develop projects.',
+      });
+      authState.setAuthModalOpen(true);
+      return;
+    }
 
     // Check & deduct user credits before triggering generation
     const isFix = Boolean(runtimeError);

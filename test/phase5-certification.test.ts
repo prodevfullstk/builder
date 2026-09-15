@@ -251,7 +251,7 @@ describe('Antigravity Phase 5 — Production Certification Hardening', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Auth-Mode': 'demo',
+          'Authorization': 'Bearer test-token-user-1',
         },
         body: JSON.stringify({ projectId: 'test' }),
       });

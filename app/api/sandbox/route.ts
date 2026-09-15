@@ -53,10 +53,10 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Authentication Check
-    const authResult = await authenticateRequest(req, { allowDemo: true });
+    const authResult = await authenticateRequest(req);
     if (authResult.error || !authResult.user) {
       return NextResponse.json(
-        { success: false, error: authResult.error || 'Unauthorized' },
+        { success: false, error: authResult.error || 'Authentication required. Please sign in to launch sandbox.' },
         { status: authResult.status || 401 }
       );
     }
@@ -397,10 +397,10 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const authResult = await authenticateRequest(req, { allowDemo: true });
+    const authResult = await authenticateRequest(req);
     if (authResult.error || !authResult.user) {
       return NextResponse.json(
-        { success: false, error: authResult.error || 'Unauthorized' },
+        { success: false, error: authResult.error || 'Authentication required. Please sign in to query sandbox.' },
         { status: authResult.status || 401 }
       );
     }
@@ -460,10 +460,10 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    const authResult = await authenticateRequest(req, { allowDemo: true });
+    const authResult = await authenticateRequest(req);
     if (authResult.error || !authResult.user) {
       return NextResponse.json(
-        { success: false, error: authResult.error || 'Unauthorized' },
+        { success: false, error: authResult.error || 'Authentication required. Please sign in to stop sandbox.' },
         { status: authResult.status || 401 }
       );
     }

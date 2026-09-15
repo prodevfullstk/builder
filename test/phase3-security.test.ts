@@ -27,7 +27,7 @@ describe('Antigravity Phase 3 Security Hardening & Execution Isolation', () => {
 
   // ── P0-1: Demo Identity Isolation & Anti-Spoofing (SEC-301) ──
   describe('P0-1: Demo Identity Isolation & Anti-Spoofing', () => {
-    it('forces demo identity to deterministic demo-user even if spoofing header is sent', async () => {
+    it('strictly rejects demo identity header or spoofing header', async () => {
       const req = new Request('http://localhost/api/test', {
         headers: {
           'X-Auth-Mode': 'demo',
@@ -35,13 +35,13 @@ describe('Antigravity Phase 3 Security Hardening & Execution Isolation', () => {
         },
       });
 
-      const auth = await authenticateRequest(req, { allowDemo: true });
-      assert.ok(auth.user);
-      assert.strictEqual(auth.user?.id, 'demo-user');
-      assert.strictEqual(auth.user?.authMode, 'demo');
+      const auth = await authenticateRequest(req);
+      assert.strictEqual(auth.user, undefined);
+      assert.strictEqual(auth.status, 401);
+      assert.match(auth.error || '', /Anonymous and demo access is disabled/i);
     });
 
-    it('strictly forbids demo user from accessing production projects', async () => {
+    it('strictly forbids unauthorized user from accessing another user project', async () => {
       registerServerProject({
         id: 'prod-fintech-project',
         owner_id: 'real-enterprise-user-uuid',
@@ -53,16 +53,16 @@ describe('Antigravity Phase 3 Security Hardening & Execution Isolation', () => {
         updatedAt: Date.now(),
       });
 
-      // Attempt access with demo user identity
+      // Attempt access with another user identity
       const verifyResult = await verifyProjectOwnership(
         'prod-fintech-project',
-        'demo-user',
-        'demo'
+        'unauthorized-attacker-uuid',
+        'real'
       );
 
       assert.strictEqual(verifyResult.authorized, false);
       assert.strictEqual(verifyResult.status, 403);
-      assert.match(verifyResult.error || '', /Demo identities cannot access production projects/i);
+      assert.match(verifyResult.error || '', /Forbidden: You do not have permission to access or modify this project/i);
     });
   });
 
@@ -196,7 +196,7 @@ describe('Antigravity Phase 3 Security Hardening & Execution Isolation', () => {
     it('rejects POST /api/sandbox with missing projectId with 400 Bad Request', async () => {
       const req = new NextRequest('http://localhost/api/sandbox', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Auth-Mode': 'demo' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer test-token-user-alpha' },
         body: JSON.stringify({ action: 'start', files: {} }),
       });
 
@@ -219,12 +219,12 @@ describe('Antigravity Phase 3 Security Hardening & Execution Isolation', () => {
         updatedAt: Date.now(),
       });
 
-      // Call as demo user trying to overwrite user-alpha's sandbox
+      // Call as user-beta trying to overwrite user-alpha's sandbox
       const req = new NextRequest('http://localhost/api/sandbox', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Auth-Mode': 'demo',
+          'Authorization': 'Bearer test-token-user-beta',
         },
         body: JSON.stringify({
           action: 'start',
@@ -242,7 +242,7 @@ describe('Antigravity Phase 3 Security Hardening & Execution Isolation', () => {
     it('rejects cross-tenant caller on DELETE /api/sandbox with 403 Forbidden', async () => {
       const deleteReq = new NextRequest('http://localhost/api/sandbox?projectId=alpha-private-project', {
         method: 'DELETE',
-        headers: { 'X-Auth-Mode': 'demo' },
+        headers: { 'Authorization': 'Bearer test-token-user-beta' },
       });
 
       const res = await sandboxDELETE(deleteReq);
@@ -254,7 +254,7 @@ describe('Antigravity Phase 3 Security Hardening & Execution Isolation', () => {
     it('rejects cross-tenant caller on GET /api/sandbox with 403 Forbidden', async () => {
       const getReq = new NextRequest('http://localhost/api/sandbox?projectId=alpha-private-project', {
         method: 'GET',
-        headers: { 'X-Auth-Mode': 'demo' },
+        headers: { 'Authorization': 'Bearer test-token-user-beta' },
       });
 
       const res = await sandboxGET(getReq);

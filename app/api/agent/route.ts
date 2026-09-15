@@ -56,19 +56,18 @@ export async function POST(req: NextRequest) {
       validatedImageRef = imgValidation.imageReference;
     }
 
-    // 2. Authentication gate: requires real Supabase token or explicit demo mode.
-    const authResult = await authenticateRequest(req, { allowDemo: true });
+    // 2. Authentication gate: requires cryptographically verified Supabase token.
+    const authResult = await authenticateRequest(req);
     if (authResult.error || !authResult.user) {
-      return new Response(JSON.stringify({ error: authResult.error || "Unauthorized" }), {
+      return new Response(JSON.stringify({ error: authResult.error || "Authentication required. Please sign in to develop projects." }), {
         status: authResult.status || 401,
         headers: { "Content-Type": "application/json" },
       });
     }
 
     // 3. Rate Limiting Gate (SEC-305 / SEC-402)
-    const isDemo = authResult.user.authMode === 'demo';
-    const rateLimitKey = isDemo ? `demo:${getClientIp(req)}` : `user:${authResult.user.id}`;
-    const maxRequests = isDemo ? 10 : 60;
+    const rateLimitKey = `user:${authResult.user.id}`;
+    const maxRequests = 60;
     const rateLimit = await checkRateLimitDistributed(rateLimitKey, maxRequests, 3600_000);
 
     if (!rateLimit.allowed) {
@@ -78,8 +77,6 @@ export async function POST(req: NextRequest) {
         JSON.stringify({
           error: isUnavailable
             ? 'Rate limiting service is temporarily unavailable. Request rejected to prevent abuse.'
-            : isDemo
-            ? 'Rate limit exceeded: Demo mode is limited to 10 generations per IP per hour. Please sign in to increase limits.'
             : 'Rate limit exceeded: You have reached the maximum of 60 requests per hour.',
         }),
         {
