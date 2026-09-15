@@ -56,13 +56,13 @@ const GROQ_VISION_MODELS = [
   "qwen/qwen3.6-27b",
 ];
 
-/** Retry fetch up to maxRetries times on 503 errors, with per-attempt AbortController timeout */
+/** Instant failover on error or capacity limits, with per-attempt timeout */
 async function fetchWithRetry(
   url: string,
   options: RequestInit,
-  maxRetries = 1,
-  delayMs = 600,
-  timeoutMs = 20000
+  maxRetries = 0,
+  delayMs = 200,
+  timeoutMs = 12000
 ): Promise<Response> {
   let lastRes: Response | null = null;
 
