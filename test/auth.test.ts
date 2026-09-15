@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { authenticateRequest } from '../lib/auth/server-auth';
-import { useAuthStore } from '../lib/auth/supabase-auth';
+import { useAuthStore, getClientAuthHeaders } from '../lib/auth/supabase-auth';
 
 describe('Server Authentication & Token Validation', () => {
   it('rejects requests with missing Authorization header', async () => {
@@ -111,5 +111,41 @@ describe('Server Authentication & Token Validation', () => {
     // User should NOT be automatically logged in as demo or authenticated
     const afterState = useAuthStore.getState();
     assert.strictEqual(afterState.isLoading, false);
+  });
+
+  it('generates demo auth headers when client has no access token', async () => {
+    await useAuthStore.getState().logout();
+    const headers = getClientAuthHeaders();
+    assert.strictEqual(headers['Content-Type'], 'application/json');
+    assert.strictEqual(headers['X-Auth-Mode'], 'demo');
+    assert.strictEqual(headers['Authorization'], undefined);
+
+    // Verify authenticateRequest accepts these headers when allowDemo is true
+    const req = new Request('http://localhost/api/agent', {
+      headers,
+    });
+    const authResult = await authenticateRequest(req, { allowDemo: true });
+    assert.ok(authResult.user);
+    assert.strictEqual(authResult.user?.authMode, 'demo');
+    assert.strictEqual(authResult.user?.id, 'demo-user');
+  });
+
+  it('generates Bearer authorization headers when client has an active access token', () => {
+    useAuthStore.getState().setSession(
+      {
+        id: 'user-xyz',
+        email: 'user@example.com',
+        name: 'User XYZ',
+        provider: 'email',
+        authMode: 'real',
+        created_at: new Date().toISOString(),
+      },
+      'test-jwt-token-456'
+    );
+    const headers = getClientAuthHeaders({ 'X-Custom-Header': 'test' });
+    assert.strictEqual(headers['Content-Type'], 'application/json');
+    assert.strictEqual(headers['Authorization'], 'Bearer test-jwt-token-456');
+    assert.strictEqual(headers['X-Auth-Mode'], undefined);
+    assert.strictEqual(headers['X-Custom-Header'], 'test');
   });
 });

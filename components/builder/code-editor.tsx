@@ -5,6 +5,7 @@ import Editor, { OnMount } from '@monaco-editor/react';
 import { useProjectStore } from '@/lib/store/project-store';
 import { evaluateCandidateChanges } from '@/lib/validation/candidate-pipeline';
 import { StreamEventDecoder } from '@/lib/ai/stream-events';
+import { getClientAuthHeaders } from '@/lib/auth/supabase-auth';
 import { FileCode, AlertCircle, Copy, Check, FilePlus, Sparkles, Send, X, Loader2 } from 'lucide-react';
 
 interface ErrorBoundaryProps {
@@ -160,7 +161,7 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
     try {
       const response = await fetch('/api/agent', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getClientAuthHeaders(),
         body: JSON.stringify({
           message: aiPrompt.trim(),
           activeFile,
@@ -254,7 +255,7 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
       // No direct client mutation occurs before the server-authoritative commit succeeds
       const commitResponse = await fetch('/api/validate/candidate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getClientAuthHeaders(),
         body: JSON.stringify({
           projectId: projectId || 'demo-saas',
           expectedRevision: baselineRevision,

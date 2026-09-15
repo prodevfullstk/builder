@@ -39,6 +39,7 @@ import { useCreditsStore, CreditAction } from '@/lib/store/credits-store';
 import { evaluateCandidateChanges } from '@/lib/validation/candidate-pipeline';
 import { parseIntentFromPrompt, MUTATING_INTENT_ACTIONS } from '@/lib/ai/intent-contract';
 import { StreamEventDecoder } from '@/lib/ai/stream-events';
+import { getClientAuthHeaders } from '@/lib/auth/supabase-auth';
 
 interface ChatPanelProps {
   onGenerateStart?: () => void;
@@ -246,7 +247,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       try {
         const response = await fetch('/api/agent', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getClientAuthHeaders(),
           body: JSON.stringify({
             message: query,
             image: currentImage || undefined,
@@ -406,7 +407,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     try {
       const response = await fetch('/api/agent', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getClientAuthHeaders(),
         signal: controller.signal,
         body: JSON.stringify({
           message: effectiveMessage,
@@ -670,7 +671,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
 
             const healResponse = await fetch('/api/agent', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: getClientAuthHeaders(),
               body: JSON.stringify({
                 message: `AUTONOMOUS BUILD VERIFICATION FAILED:\n${checkResult.errors.join('\n')}\n\nPlease perform a minimal surgical fix to repair the error without modifying working features.`,
                 files: verifiedFiles,
@@ -747,7 +748,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
             try {
               const buildRes = await fetch('/api/validate/build', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getClientAuthHeaders(),
                 body: JSON.stringify({
                   projectId: projectId || 'workspace',
                   framework: effectiveFramework,

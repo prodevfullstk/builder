@@ -26,6 +26,7 @@ import { parseToolCalls, executeToolCalls } from '@/lib/ai/mcp-executor';
 import { parseFinalOutput } from '@/lib/ai/code-parser';
 import { evaluateCandidateChanges } from '@/lib/validation/candidate-pipeline';
 import { bundleProjectWithEsbuild } from '@/lib/preview/esbuild-compiler';
+import { getClientAuthHeaders } from '@/lib/auth/supabase-auth';
 
 // Dynamically import sandbox engines with ssr: false
 const VercelPreview = dynamic(
@@ -89,7 +90,7 @@ export function PreviewPane() {
     try {
       const res = await fetch('/api/agent', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getClientAuthHeaders(),
         body: JSON.stringify({
           mode: 'auto-fix',
           message: runtimeError,
@@ -157,7 +158,7 @@ export function PreviewPane() {
       try {
         const buildRes = await fetch('/api/validate/build', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getClientAuthHeaders(),
           body: JSON.stringify({
             projectId: projectId || 'workspace',
             framework,

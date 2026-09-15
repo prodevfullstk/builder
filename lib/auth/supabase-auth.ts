@@ -263,3 +263,23 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+/**
+ * Centralized helper for client-side API requests.
+ * Attaches Supabase Bearer token if the user is authenticated,
+ * or attaches X-Auth-Mode: demo for unauthenticated/demo visitors.
+ */
+export function getClientAuthHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
+  const token = useAuthStore.getState().accessToken;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...extraHeaders,
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  } else {
+    headers['X-Auth-Mode'] = 'demo';
+  }
+  return headers;
+}
+

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, ExternalLink, RefreshCw, AlertCircle, Cloud, CheckCircle2 } from 'lucide-react';
+import { getClientAuthHeaders } from '@/lib/auth/supabase-auth';
 
 export type SandboxStatus = 'initializing' | 'mounting' | 'starting' | 'ready' | 'error';
 
@@ -66,7 +67,7 @@ export function VercelPreview({
 
       const res = await fetch('/api/sandbox', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getClientAuthHeaders(),
         body: JSON.stringify({
           action: 'start',
           projectId,
