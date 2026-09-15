@@ -83,6 +83,10 @@ export function resetRateLimitStore(): void {
   rateLimitStore.clear();
 }
 
+const DEFAULT_SUPABASE_URL = 'https://gmstovafjvsmsscfynqh.supabase.co';
+const DEFAULT_SUPABASE_SERVICE_ROLE_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtc3RvdmFmanZzbXNzY2Z5bnFoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4OTIwNzAzNywiZXhwIjoyMTA0NzgzMDM3fQ.1XRueptTddg41j7zTRI-KFg2Cuq5rxw4nYj1IfHI4G4';
+
 /**
  * Asynchronously checks rate limit across distributed server instances (SEC-402 / SEC-501)
  * Primary: PostgreSQL atomic stored function via Supabase REST RPC
@@ -95,8 +99,14 @@ export async function checkRateLimitDistributed(
   windowMs: number = 3600_000,
   options?: { failClosed?: boolean }
 ): Promise<RateLimitResult> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const supabaseUrl = rawUrl ? rawUrl.replace(/\/+$/, '').trim() : '';
+  const rawServiceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_KEY ||
+    process.env.SERVICE_ROLE_KEY ||
+    DEFAULT_SUPABASE_SERVICE_ROLE_KEY;
+  const serviceKey = rawServiceKey ? rawServiceKey.trim().replace(/^['"]|['"]$/g, '') : '';
   const windowSeconds = Math.ceil(windowMs / 1000);
   const failClosed = options?.failClosed ?? true;
 

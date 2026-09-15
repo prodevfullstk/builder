@@ -113,7 +113,7 @@ function BuilderWorkspace() {
     addLog(`[Project] Created new workspace (${newProj.id})`);
 
     // If navigated with ?prompt=..., trigger AI generation immediately
-    if (initialPrompt && status === "idle") {
+    if (initialPrompt) {
       const runInitialGeneration = async () => {
         // Enforce authentic Supabase session before starting project build
         const authState = useAuthStore.getState();
