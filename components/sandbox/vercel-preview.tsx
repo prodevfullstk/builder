@@ -11,6 +11,7 @@ interface VercelPreviewProps {
   projectId?: string;
   framework?: string;
   refreshNonce?: number;
+  currentRoute?: string;
   onStatusChange?: (status: SandboxStatus) => void;
   onError?: (error: string) => void;
   onReady?: (previewUrl: string) => void;
@@ -22,6 +23,7 @@ export function VercelPreview({
   projectId = 'default',
   framework = 'nextjs',
   refreshNonce = 0,
+  currentRoute = '/',
   onStatusChange,
   onError,
   onReady,
@@ -203,7 +205,11 @@ export function VercelPreview({
       {previewUrl && (
         <iframe
           ref={iframeRef}
-          src={previewUrl}
+          src={
+            currentRoute && currentRoute !== '/'
+              ? `${previewUrl.replace(/\/$/, '')}${currentRoute.startsWith('/') ? currentRoute : `/${currentRoute}`}`
+              : previewUrl
+          }
           title="Vercel Sandbox Live Preview"
           className="w-full flex-1 border-none bg-white"
           sandbox="allow-scripts allow-same-origin allow-modals allow-forms allow-popups"

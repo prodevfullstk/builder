@@ -19,10 +19,12 @@ import {
   Loader2,
   Cloud,
   Eye,
+  Lock,
 } from 'lucide-react';
 import { useProjectStore } from '@/lib/store/project-store';
 import { InstantPreview } from '@/components/preview/instant-preview';
 import { detectBackendEntry } from '@/lib/sandbox/detect-backend';
+import { detectProjectRoutes } from '@/lib/preview/route-detector';
 import { parseToolCalls, executeToolCalls } from '@/lib/ai/mcp-executor';
 import { parseFinalOutput } from '@/lib/ai/code-parser';
 import { evaluateCandidateChanges } from '@/lib/validation/candidate-pipeline';
@@ -68,6 +70,16 @@ export function PreviewPane() {
   const [compilationMode, setCompilationMode] = useState<'simulated-dom' | 'virtual-compiled'>('simulated-dom');
 
   const [isFixing, setIsFixing] = useState(false);
+  const [currentRoute, setCurrentRoute] = useState<string>('/');
+  const routes = useMemo(() => detectProjectRoutes(files), [files]);
+  const hasFiles = Boolean(files && Object.keys(files).length > 0);
+
+  // Sync current route if files change and current route is no longer valid
+  React.useEffect(() => {
+    if (routes.length > 0 && !routes.some((r) => r.path === currentRoute)) {
+      setCurrentRoute(routes[0].path);
+    }
+  }, [routes, currentRoute]);
 
   // Detect if project has a backend server.js file
   const hasBackend = useMemo(() => {
@@ -275,54 +287,65 @@ export function PreviewPane() {
           </div>
         </div>
 
-        {/* Center: URL Bar Mockup & Truthful Verification Badge */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-zinc-950 border border-zinc-800/80 text-[11px] text-zinc-400 font-mono">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
-            <span className="truncate max-w-[180px]">
-              {engine === 'vercel'
-                ? previewUrl ? previewUrl.replace(/^https?:\/\//, '') : 'sandbox.vercel.run'
-                : engine === 'instant'
-                ? 'preview.local'
-                : 'localhost:3000'}
-            </span>
-            {hasBackend && engine === 'instant' && (
-              <span
-                className="ml-1 flex items-center gap-0.5 text-emerald-400/80"
-                title="Backend API auto-detected and bridged via Nodebox"
-              >
-                <Server className="w-2.5 h-2.5" />
-                <span className="text-[10px]">+API</span>
-              </span>
+        {/* Center: Professional Browser Route Navigator (ONLY displayed when site preview is active) */}
+        {hasFiles ? (
+          <div className="flex items-center gap-1.5 flex-1 max-w-[440px] mx-2">
+            <div className="flex items-center gap-1.5 flex-1 px-2.5 py-1 rounded-md bg-zinc-950 border border-zinc-800/80 text-[11px] font-mono shadow-xs group">
+              <Lock className="w-3 h-3 text-emerald-400 shrink-0" />
+              <span className="text-zinc-500 text-[10px] hidden sm:inline select-none">localhost:3000</span>
+              <span className="text-zinc-600 hidden sm:inline select-none">/</span>
+
+              {/* Active Route Dropdown / Selector */}
+              <div className="relative flex items-center flex-1 min-w-[80px]">
+                <select
+                  value={currentRoute}
+                  onChange={(e) => setCurrentRoute(e.target.value)}
+                  className="bg-transparent text-zinc-100 font-semibold text-[11px] focus:outline-none cursor-pointer appearance-none pr-4 w-full truncate"
+                  title="Navigate to routed page"
+                >
+                  {routes.map((r) => (
+                    <option key={r.path} value={r.path} className="bg-zinc-900 text-zinc-100 py-1 font-mono">
+                      {r.path} {r.path === '/' ? '(Home)' : `(${r.label})`}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3 h-3 text-zinc-500 absolute right-0 pointer-events-none" />
+              </div>
+
+              {hasBackend && engine === 'instant' && (
+                <span
+                  className="ml-1 flex items-center gap-0.5 text-emerald-400/80 shrink-0"
+                  title="Backend API bridged"
+                >
+                  <Server className="w-2.5 h-2.5" />
+                  <span className="text-[9px] font-sans font-medium">+API</span>
+                </span>
+              )}
+            </div>
+
+            {/* Quick-switch Route Pills if multiple routed pages exist */}
+            {routes.length > 1 && (
+              <div className="hidden md:flex items-center gap-1 shrink-0">
+                {routes.slice(0, 4).map((r) => (
+                  <button
+                    key={r.path}
+                    onClick={() => setCurrentRoute(r.path)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                      currentRoute === r.path
+                        ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 border border-transparent'
+                    }`}
+                    title={`Go to ${r.path}`}
+                  >
+                    {r.path}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
-
-          {/* Truthful Preview Mode Badge */}
-          <span
-            className={`px-2 py-0.5 rounded text-[10px] font-mono border ${
-              engine === 'vercel'
-                ? previewUrl
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                  : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                : engine === 'instant'
-                ? compilationMode === 'virtual-compiled'
-                  ? 'bg-blue-500/10 border-blue-500/30 text-blue-400'
-                  : 'bg-zinc-800 border-zinc-700 text-zinc-400'
-                : 'bg-violet-500/10 border-violet-500/30 text-violet-400'
-            }`}
-            title="Active preview engine and verification tier"
-          >
-            {engine === 'vercel'
-              ? previewUrl
-                ? 'Native Verified (Vercel)'
-                : 'Native Sandbox (Initializing)'
-              : engine === 'instant'
-              ? compilationMode === 'virtual-compiled'
-                ? 'Virtual Compilation (esbuild)'
-                : 'Visual Preview (Simulated DOM)'
-              : 'Nodebox Container'}
-          </span>
-        </div>
+        ) : (
+          <div className="flex-1" />
+        )}
 
         {/* Right: Actions */}
         <div className="flex items-center gap-1">
@@ -429,11 +452,12 @@ export function PreviewPane() {
             </div>
           ) : engine === 'vercel' ? (
             <VercelPreview
-              key={`vercel-${previewKey}`}
+              key={`vercel-${previewKey}-${currentRoute}`}
               files={files}
               projectId={projectId || 'default'}
               framework={framework}
               refreshNonce={previewKey}
+              currentRoute={currentRoute}
               onStatusChange={(newStatus: string) => {
                 if (newStatus === 'ready') {
                   setStatus('ready', 'Vercel Sandbox ready');
@@ -456,10 +480,11 @@ export function PreviewPane() {
             />
           ) : engine === 'instant' ? (
             <InstantPreview
-              key={`instant-${previewKey}`}
+              key={`instant-${previewKey}-${currentRoute}`}
               files={files}
               refreshNonce={previewKey}
               backendUrl={backendUrl}
+              currentRoute={currentRoute}
               onError={(err) => {
                 addLog(`[Preview Error] ${err}`);
                 setRuntimeError(err);
@@ -475,9 +500,10 @@ export function PreviewPane() {
             />
           ) : (
             <NodeboxPreview
-              key={`nodebox-${previewKey}`}
+              key={`nodebox-${previewKey}-${currentRoute}`}
               files={files}
               framework={framework}
+              currentRoute={currentRoute}
               onStatusChange={(newStatus: string) => {
                 if (newStatus === 'ready') {
                   setStatus('ready', 'Preview ready');

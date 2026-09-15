@@ -4,7 +4,7 @@
  * Compiles multi-file workspaces using Babel standalone, Tailwind CDN, and esm.sh
  */
 
-export function generateInstantPreviewHtml(files: Record<string, string>): string {
+export function generateInstantPreviewHtml(files: Record<string, string>, currentRoute: string = '/'): string {
   // Pre-configured stable CDN packages
   const KNOWN_PACKAGES: Record<string, string> = {
     "react": "https://esm.sh/react@19?dev",
@@ -441,7 +441,25 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
         mapScript.textContent = JSON.stringify(importMap);
         document.head.appendChild(mapScript);
 
-        // 3. Find root entry component
+        // 3. Find root entry component based on currentRoute
+        const targetRoute = ${JSON.stringify(currentRoute || '/')};
+        let routeEntryPath = null;
+        if (targetRoute && targetRoute !== '/') {
+          const cleanRoute = targetRoute.replace(/^\/+/, '');
+          const routeCandidates = [
+            'app/' + cleanRoute + '/page.tsx',
+            'app/' + cleanRoute + '/page.jsx',
+            'src/app/' + cleanRoute + '/page.tsx',
+            'src/app/' + cleanRoute + '/page.jsx',
+            'pages/' + cleanRoute + '.tsx',
+            'pages/' + cleanRoute + '.jsx',
+            'src/pages/' + cleanRoute + '.tsx',
+            'src/pages/' + cleanRoute.charAt(0).toUpperCase() + cleanRoute.slice(1) + '.tsx',
+            'components/pages/' + cleanRoute.charAt(0).toUpperCase() + cleanRoute.slice(1) + '.tsx',
+          ];
+          routeEntryPath = routeCandidates.find(p => blobMap[p] || blobMap['__vfs__/' + p]);
+        }
+
         const entryCandidates = [
           'app/page.tsx',
           'app/page.jsx',
@@ -458,10 +476,10 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
           'main.jsx',
         ];
 
-        let entryPath = entryCandidates.find(p => blobMap[p] || blobMap['__vfs__/' + p]);
+        let entryPath = routeEntryPath || entryCandidates.find(p => blobMap[p] || blobMap['__vfs__/' + p]);
         if (!entryPath) {
           // Find any main component
-          entryPath = Object.keys(rawFiles).find(p => p.match(/page\\.(tsx|jsx)$/) || p.match(/App\\.(tsx|jsx)$/) || p.match(/main\\.(tsx|jsx)$/));
+          entryPath = Object.keys(rawFiles).find(p => p.match(/page\.(tsx|jsx)$/) || p.match(/App\.(tsx|jsx)$/) || p.match(/main\.(tsx|jsx)$/));
         }
         if (!entryPath) {
           // Fallback to first tsx/jsx file
@@ -491,9 +509,31 @@ export function generateInstantPreviewHtml(files: Record<string, string>): strin
             return;
           }
         } else {
+          // Sync browser history path for client-side routing
+          try {
+            if (window.location.pathname !== targetRoute) {
+              window.history.replaceState({}, '', targetRoute);
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }
+          } catch (e) {}
+
+          // Check if layout exists to wrap routed page
+          const layoutPath = ['app/layout.tsx', 'src/app/layout.tsx'].find(p => blobMap[p] || blobMap['__vfs__/' + p]);
+          let LayoutComp = null;
+          if (layoutPath && routeEntryPath) {
+            try {
+              const layoutMod = await import(blobMap[layoutPath] || blobMap['__vfs__/' + layoutPath]);
+              LayoutComp = layoutMod.default;
+            } catch (e) {}
+          }
+
           // 5. Render App
           const root = ReactDOM.createRoot(rootElem);
-          root.render(React.createElement(Component));
+          if (LayoutComp && typeof LayoutComp === 'function') {
+            root.render(React.createElement(LayoutComp, null, React.createElement(Component)));
+          } else {
+            root.render(React.createElement(Component));
+          }
         }
 
         // Hide loading spinner

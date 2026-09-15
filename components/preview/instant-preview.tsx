@@ -9,6 +9,7 @@ interface InstantPreviewProps {
   className?: string;
   refreshNonce?: number;
   backendUrl?: string | null;
+  currentRoute?: string;
   onError?: (err: string) => void;
   onScreenshot?: (dataUrl: string) => void;
   onEngineStatusChange?: (status: 'simulated-dom' | 'virtual-compiled') => void;
@@ -19,6 +20,7 @@ export function InstantPreview({
   className = '',
   refreshNonce = 0,
   backendUrl = null,
+  currentRoute = '/',
   onError,
   onScreenshot,
   onEngineStatusChange,
@@ -52,8 +54,8 @@ export function InstantPreview({
   // 1. Babel HTML renders immediately (sync) - always reliable
   const babelHtml = useMemo(() => {
     if (!files || Object.keys(files).length === 0) return '';
-    return generateInstantPreviewHtml(files);
-  }, [files, refreshNonce]);
+    return generateInstantPreviewHtml(files, currentRoute);
+  }, [files, refreshNonce, currentRoute]);
 
   // 2. esbuild HTML upgrades async in background (better quality)
   const [esbuildHtml, setEsbuildHtml] = useState<string>('');

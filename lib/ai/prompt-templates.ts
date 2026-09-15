@@ -13,25 +13,29 @@ const NEXTJS_STRUCTURE = `
 ### FRAMEWORK: Next.js 15 (App Router / React)
 NOTE: Next.js IS a fullstack React framework. When the user asks for "React", "React app", or "React website", seamlessly build it using Next.js App Router React components ('use client', React hooks, JSX). NEVER get confused, reject, or complain about React.
 Generate files in this structure:
-- app/page.tsx        — main React page (entry, use 'use client')
-- app/layout.tsx      — root layout with <html> and metadata
-- app/globals.css     — global styles (optional)
-- components/         — all React components
-- lib/utils.ts        — utility helpers (cn, etc.)
-- package.json        — dependencies
+- app/page.tsx             — main Home/Landing page ('/' route, 'use client')
+- app/[route]/page.tsx     — routed pages when multi-page app is requested (e.g. app/shop/page.tsx for '/shop', app/about/page.tsx for '/about', app/pricing/page.tsx for '/pricing', app/dashboard/page.tsx for '/dashboard')
+- app/layout.tsx           — root layout with <html>, metadata, and global shell
+- app/globals.css          — global styles & Tailwind directives
+- components/              — all React components (Navbar, Footer, feature sections)
+- components/Navbar.tsx    — global header navigation with working links to all routed pages
+- lib/utils.ts             — utility helpers (cn, etc.)
+- package.json             — dependencies
 NEVER generate src/App.tsx, src/main.tsx, or vite.config.ts for Next.js projects.`;
 
 const VITE_STRUCTURE = `
 ### FRAMEWORK: Vite + React
 When the user asks for "React" or "Vite", build it using React + Vite.
 Generate files in this structure:
-- src/App.tsx         — root app component (entry)
-- src/main.tsx        — ReactDOM.createRoot entry point
-- src/components/     — all React components
-- src/lib/utils.ts    — utility helpers
-- index.html          — HTML entry with <div id="root">
-- vite.config.ts      — Vite configuration
-- package.json        — dependencies
+- src/App.tsx              — root app component with routing/view switching
+- src/pages/               — dedicated page components (Home.tsx, Shop.tsx, Pricing.tsx, About.tsx, etc.)
+- src/main.tsx             — ReactDOM.createRoot entry point
+- src/components/          — all reusable React components
+- src/components/Navbar.tsx— global navigation with links/tabs to all pages
+- src/lib/utils.ts         — utility helpers
+- index.html               — HTML entry with <div id="root">
+- vite.config.ts           — Vite configuration
+- package.json             — dependencies (include "react-router-dom" when multi-page)
 NEVER generate app/page.tsx or app/layout.tsx for Vite projects.`;
 
 const ASTRO_STRUCTURE = `
@@ -174,6 +178,11 @@ MANDATORY DECOMPOSITION PATTERN:
     ✅ FOR REACT/NEXT.JS/VITE GAMES — use inline SVG directly in JSX for detailed plane/rocket sprites: fuselage (ellipse), wings (polygon), tail fins, cockpit (semi-transparent ellipse), engine glow (glowing circle). Apply CSS transform:rotate(Xdeg) on the SVG based on flight angle.
     ✅ FOR HTML CANVAS GAMES — use ctx.save()/restore(), ctx.translate(x,y), ctx.rotate(angle), ctx.bezierCurveTo() to draw fuselage+wings+cockpit. Add a particles[] array for engine exhaust trail.
     ✅ GENERAL: Display game multiplier as large glowing text (e.g. Tailwind text-6xl font-black text-green-400 with drop-shadow). Add crash animation (red flash + container shake) via CSS @keyframes.
+    11. 🌐 MULTI-PAGE ROUTING & WORKING SITE NAVIGATION:
+    When building any multi-page app, storefront, SaaS, dashboard, or portal:
+    ✅ FOR NEXT.JS: Generate distinct routed pages under \`app/\` (e.g. \`app/page.tsx\` for '/', \`app/shop/page.tsx\` for '/shop', \`app/pricing/page.tsx\` for '/pricing', \`app/about/page.tsx\` for '/about', \`app/dashboard/page.tsx\` for '/dashboard').
+    ✅ FOR VITE REACT: Generate dedicated page components in \`src/pages/\` (Home.tsx, Shop.tsx, Pricing.tsx, About.tsx) and orchestrate routing via \`react-router-dom\` or stateful active route navigation in \`src/App.tsx\`.
+    ✅ NAVIGATION: In \`components/Navbar.tsx\`, provide real clickable links pointing to every generated route (e.g. \`<Link href="/shop">\` or \`<a href="/shop">\`), with clear active page indicators so users can freely explore all routed pages in the live preview.
 
 
 

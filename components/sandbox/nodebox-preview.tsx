@@ -16,6 +16,7 @@ interface NodeboxPreviewProps {
   files: FileSystem;
   framework: Framework;
   entry?: string;
+  currentRoute?: string;
   onStatusChange?: (status: Status) => void;
   onError?: (error: string) => void;
   onReady?: (previewUrl: string) => void;
@@ -29,6 +30,7 @@ export function NodeboxPreview({
   files, 
   framework, 
   entry,
+  currentRoute = '/',
   onStatusChange,
   onError,
   onReady
@@ -187,7 +189,11 @@ export function NodeboxPreview({
         {previewUrl ? (
           <iframe
             ref={iframeRef}
-            src={previewUrl}
+            src={
+              currentRoute && currentRoute !== '/'
+                ? `${previewUrl.replace(/\/$/, '')}${currentRoute.startsWith('/') ? currentRoute : `/${currentRoute}`}`
+                : previewUrl
+            }
             title="Nodebox Preview"
             className="w-full h-full border-none"
             sandbox="allow-scripts allow-same-origin allow-modals allow-forms allow-popups"
