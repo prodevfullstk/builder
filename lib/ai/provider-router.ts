@@ -20,30 +20,30 @@ export interface ProviderSelection {
 }
 
 export const PROVIDER_CAPABILITIES: Record<string, ProviderCapability> = {
-  'gemini-2.5-flash': {
+  'gemini-3.6-flash': {
     provider: 'gemini',
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.6-flash',
     supportsVision: true,
     supportsStreaming: true,
     maxContextTokens: 1_000_000,
   },
-  'gemini-2.0-flash': {
+  'gemini-flash-latest': {
     provider: 'gemini',
-    model: 'gemini-2.0-flash',
+    model: 'gemini-flash-latest',
     supportsVision: true,
     supportsStreaming: true,
     maxContextTokens: 1_000_000,
   },
-  'groq-llama-3.3-70b': {
+  'groq-gpt-oss-120b': {
     provider: 'groq',
-    model: 'llama-3.3-70b-versatile',
+    model: 'openai/gpt-oss-120b',
     supportsVision: false,
     supportsStreaming: true,
     maxContextTokens: 128_000,
   },
-  'groq-llama-3.2-11b-vision': {
+  'groq-qwen3.8-27b': {
     provider: 'groq',
-    model: 'llama-3.2-11b-vision-preview',
+    model: 'qwen/qwen3.8-27b',
     supportsVision: true,
     supportsStreaming: true,
     maxContextTokens: 128_000,
@@ -76,7 +76,7 @@ export function resolveProvider(params: {
   if (hasImage && geminiAvailable) {
     return {
       provider: 'gemini',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
       visionEnabled: true,
       visionDegraded: false,
       fallbackOccurred: false,
@@ -89,7 +89,7 @@ export function resolveProvider(params: {
     // Check if Groq vision model is supported or if we must preserve VisualSpec
     return {
       provider: 'groq',
-      model: 'llama-3.2-11b-vision-preview',
+      model: 'qwen/qwen3.8-27b',
       visionEnabled: true,
       visionDegraded: false,
       fallbackOccurred: true,
@@ -102,7 +102,7 @@ export function resolveProvider(params: {
   if (hasImage && !geminiAvailable && !groqAvailable) {
     return {
       provider: 'gemini',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
       visionEnabled: false,
       visionDegraded: true,
       fallbackOccurred: true,
@@ -115,7 +115,7 @@ export function resolveProvider(params: {
   if (preferredProvider === 'groq' && groqAvailable) {
     return {
       provider: 'groq',
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       visionEnabled: false,
       visionDegraded: false,
       fallbackOccurred: false,
@@ -127,7 +127,7 @@ export function resolveProvider(params: {
   if (geminiAvailable) {
     return {
       provider: 'gemini',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
       visionEnabled: false,
       visionDegraded: false,
       fallbackOccurred: false,
@@ -138,7 +138,7 @@ export function resolveProvider(params: {
   if (groqAvailable) {
     return {
       provider: 'groq',
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       visionEnabled: false,
       visionDegraded: false,
       fallbackOccurred: true,
@@ -150,7 +150,7 @@ export function resolveProvider(params: {
   // No keys configured
   return {
     provider: 'gemini',
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.6-flash',
     visionEnabled: false,
     visionDegraded: false,
     fallbackOccurred: false,

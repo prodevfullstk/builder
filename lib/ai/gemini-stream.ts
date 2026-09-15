@@ -41,9 +41,8 @@ interface AIProviderTarget {
 
 const GEMINI_MODELS = [
   "gemini-3.6-flash",
-  "gemini-3.7-flash",
   "gemini-flash-latest",
-  "gemini-3.5-flash",
+  "gemini-3.7-flash",
 ];
 
 const GROQ_TEXT_MODELS = [
@@ -62,7 +61,7 @@ async function fetchWithRetry(
   options: RequestInit,
   maxRetries = 0,
   delayMs = 200,
-  timeoutMs = 12000
+  timeoutMs = 15000
 ): Promise<Response> {
   let lastRes: Response | null = null;
 
