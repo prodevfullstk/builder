@@ -213,24 +213,8 @@ export function parseIntentFromPrompt(params: {
     }
   }
 
-  // Extract requirements from prompt
-  const requirements: string[] = [];
-  if (action === 'CREATE_PROJECT') {
-    requirements.push(`Create complete ${detectedFramework} web application matching: ${trimmed}`);
-    if (/landing\s*page/i.test(trimmed)) {
-      requirements.push('Include cohesive modern layout with navigation, sections, and responsive design');
-    }
-    if (/navbar|navigation/i.test(trimmed)) requirements.push('Include responsive navigation bar');
-    if (/hero/i.test(trimmed)) requirements.push('Include high-converting hero section');
-    if (/pricing/i.test(trimmed)) requirements.push('Include tiered pricing comparison cards');
-    if (/testimonial/i.test(trimmed)) requirements.push('Include customer testimonials section');
-    if (/footer/i.test(trimmed)) requirements.push('Include full footer with navigation and legal links');
-  } else {
-    requirements.push(`Implement requested change: ${trimmed}`);
-    if (targetFiles.length > 0) {
-      requirements.push(`Target relevant files: ${targetFiles.join(', ')}`);
-    }
-  }
+  // Extract requirements dynamically from prompt via domain-agnostic semantic decomposition
+  const requirements = decomposePromptRequirements(trimmed, detectedFramework, action);
 
   // Formulate canonical acceptance criteria
   const acceptanceCriteria: AcceptanceCriterion[] = [];
@@ -252,14 +236,17 @@ export function parseIntentFromPrompt(params: {
       });
     }
   } else if (action === 'MODIFY_FEATURE' || action === 'VISUAL_EDIT') {
-    // Specific property adjustments (e.g. "make navbar logo 20% smaller")
-    const isSmallerLogo = /logo/i.test(trimmed) && /(?:smaller|reduce|20%|size)/i.test(trimmed);
-    if (isSmallerLogo) {
+    // Specific property adjustments (e.g. size, color, dimension, layout)
+    const hasPropertyAdjustment = /(?:size|smaller|larger|reduce|shrink|compact|height|width|color|diminuer|reducir|kleiner|ছোট|বড়|20%|\d+px|\d+rem|\d+%)/i.test(trimmed);
+    const isLogoTarget = trimmed.toLowerCase().includes('logo') || trimmed.includes('লোগো');
+    const targetDescriptor = isLogoTarget ? 'navbar.logo' : (targetFiles[0] || 'component.property');
+
+    if (hasPropertyAdjustment) {
       acceptanceCriteria.push({
         id: 'crit-logo-size',
-        criterion: 'Navbar logo dimensions are reduced by 20% compared to baseline',
+        criterion: `Requested UI property modification for '${trimmed}' is applied to target component`,
         type: 'ui_property',
-        target: 'navbar.logo',
+        target: targetDescriptor,
         verification: 'delta_ast',
         expectedValue: '0.8x',
       });
@@ -267,7 +254,7 @@ export function parseIntentFromPrompt(params: {
         id: 'crit-navbar-intact',
         criterion: 'Navbar continues to render other navigational elements without regressions',
         type: 'component_exists',
-        target: 'Navbar',
+        target: isLogoTarget ? 'Navbar' : (targetFiles[0]?.split('/').pop()?.replace(/\.[^/.]+$/, '') || 'Navbar'),
         verification: 'static_ast',
       });
     } else {
@@ -280,19 +267,20 @@ export function parseIntentFromPrompt(params: {
       });
     }
   } else if (action === 'ADD_FEATURE') {
-    if (/hamburger|mobile\s*menu/i.test(trimmed)) {
+    const hasInteractionOrNav = /(?:menu|nav|drawer|modal|toggle|button|sidebar|search|form|cart|list|ফিল্টার|মেনু)/i.test(trimmed);
+    if (hasInteractionOrNav) {
       acceptanceCriteria.push({
-        id: 'crit-hamburger-trigger',
-        criterion: 'Mobile hamburger menu toggle button is present with open/close state',
+        id: 'crit-interaction-trigger',
+        criterion: `Interactive trigger and state management for '${trimmed}' are present`,
         type: 'interaction',
-        target: 'mobile-menu-trigger',
+        target: 'component-trigger',
         verification: 'behavioral',
       });
       acceptanceCriteria.push({
         id: 'crit-responsive-behavior',
-        criterion: 'Desktop navigation remains visible on large screens while mobile menu adapts to small screens',
+        criterion: 'Interface adapts responsively across desktop and mobile viewports',
         type: 'responsive_behavior',
-        target: 'navigation',
+        target: 'layout',
         verification: 'behavioral',
       });
     } else {
@@ -362,3 +350,88 @@ export function parseIntentFromPrompt(params: {
     timestamp,
   };
 }
+
+/**
+ * Domain-agnostic semantic prompt decomposition into structured, prompt-grounded requirements/milestones.
+ * Decomposes arbitrary requests (bookstore, dashboard, portfolio, recipe app, etc.) into 3-5 distinct milestones.
+ */
+export function decomposePromptRequirements(
+  prompt: string,
+  framework: string,
+  action: IntentAction
+): string[] {
+  const trimmed = prompt.trim();
+  const requirements: string[] = [];
+
+  if (action === 'CREATE_PROJECT') {
+    // 1. Primary architecture baseline
+    requirements.push(`Architect ${framework} project structure and foundational layout`);
+
+    // 2. Extract feature clauses from prompt
+    // Detect coordinator clauses (e.g., "with ...", "including ...", "having ...", "featuring ...", "con ...", "avec ...", "mit ...", "যাতে ...", "সহ ...", "مع ...")
+    const clauseSplitRegex = /(?:,\s*|\s+(?:and|with|including|featuring|having|con|avec|mit|und|y|et|এবং|সহ|আর|व|तथा|مع|و|、|そして)\s+)/i;
+
+    let featureSource = trimmed;
+    const withMatch = trimmed.match(/(?:with|including|featuring|having|con|avec|mit|যাতে|সহ|مع|備えた|содержащий|с)\s+(.+)$/i);
+    if (withMatch) {
+      featureSource = withMatch[1];
+    } else {
+      // Remove leading creation verbs
+      featureSource = trimmed.replace(/^(?:create|build|make|scaffold|develop|design|generate|তৈরি\s*করুন|তৈরি\s*করো|বানাও|बनाएं|créer|crear|أنشئ|作成する|erstellen|создай)\s+(?:a|an|the|un|une|un\s*sitio|un\s*app|eine|online|modern|full)?\s*/i, '');
+    }
+
+    // Split into distinct candidate feature tokens
+    const rawClauses = featureSource
+      .split(clauseSplitRegex)
+      .map((c) => c.trim().replace(/^and\s+/i, '').replace(/\.$/, ''))
+      .filter((c) => c.length > 2 && !/^(?:a|an|the|with|and|or|for|of|in|to)$/i.test(c));
+
+    // Deduplicate and filter noise
+    const uniqueClauses: string[] = [];
+    for (const clause of rawClauses) {
+      const lower = clause.toLowerCase();
+      if (!uniqueClauses.some((u) => u.toLowerCase() === lower || u.toLowerCase().includes(lower))) {
+        uniqueClauses.push(clause);
+      }
+    }
+
+    if (uniqueClauses.length >= 2) {
+      // Multiple distinct features identified from prompt
+      for (const clause of uniqueClauses.slice(0, 6)) {
+        requirements.push(`Include ${clause}`);
+      }
+    } else if (uniqueClauses.length === 1 && uniqueClauses[0].length > 5) {
+      // Single specific application concept (e.g. "dashboard for monitoring server uptime")
+      const concept = uniqueClauses[0];
+      requirements.push(`Implement core functional views and components for ${concept}`);
+      requirements.push(`Build interactive controls, data workflows and state management`);
+    } else {
+      requirements.push(`Implement core application views and user interface components`);
+      requirements.push(`Build interactive state, navigation flows and data bindings`);
+    }
+
+    // 3. Final verification & responsive layout milestone
+    requirements.push(`Integrate responsive styling, accessibility and verify preview sandbox`);
+  } else if (action === 'MODIFY_FEATURE' || action === 'VISUAL_EDIT') {
+    requirements.push(`Inspect existing component structure and baseline styles`);
+    requirements.push(`Apply surgical modification for: ${trimmed}`);
+    requirements.push(`Verify component hierarchy and layout integrity without regression`);
+  } else if (action === 'ADD_FEATURE') {
+    requirements.push(`Identify integration point and declare feature interfaces`);
+    requirements.push(`Implement new feature capabilities: ${trimmed}`);
+    requirements.push(`Connect feature to layout and verify interaction behavior`);
+  } else if (action === 'FIX_BUG') {
+    requirements.push(`Diagnose root cause of reported issue or runtime exception`);
+    requirements.push(`Apply minimal surgical patch to offending component(s)`);
+    requirements.push(`Verify error resolution and clean compilation`);
+  } else if (action === 'REFACTOR') {
+    requirements.push(`Analyze component dependencies and clean up structure`);
+    requirements.push(`Refactor code according to best practices and framework standards`);
+    requirements.push(`Verify functional parity and zero regression`);
+  } else {
+    requirements.push(`Evaluate workspace context and address: ${trimmed}`);
+  }
+
+  return requirements;
+}
+

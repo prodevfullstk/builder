@@ -218,14 +218,35 @@ Apply the requested changes. Output modified/new files via standard code blocks 
       ],
     });
 
+    const runId = 'run_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7);
+
+    // Formulate dynamic, prompt-grounded milestones
+    const dynamicSteps: string[] = [];
+    if (intent.requirements && intent.requirements.length > 0) {
+      for (const req of intent.requirements.slice(0, 5)) {
+        dynamicSteps.push(req);
+      }
+    }
+    if (dynamicSteps.length === 0) {
+      dynamicSteps.push(
+        `Analyze ${framework} architecture for ${intent.targetDescription || intent.action}`,
+        `Synthesize components and layout`,
+        `Verify candidate build and preview sandbox`
+      );
+    }
+
     const typedStream = createTypedAgentSSEStream({
       rawStream,
       intent,
-      planSteps: [
-        `Analyze ${framework} intent: ${intent.action}`,
-        `Retrieve relevant context for target components`,
-        `Synthesize candidate implementation`,
-      ],
+      runId,
+      planSteps: dynamicSteps,
+      milestones: dynamicSteps.map((step, idx) => ({
+        id: `milestone-${idx + 1}`,
+        title: step,
+        order: idx + 1,
+        status: 'pending',
+      })),
+      retrievedSnippets: retrievalContext?.retrievedSnippets || [],
     });
 
     return new Response(typedStream, {
@@ -238,6 +259,7 @@ Apply the requested changes. Output modified/new files via standard code blocks 
         "X-Agent-Mode": mode,
         "X-Intent-Action": intent.action,
         "X-Intent-Id": intent.id,
+        "X-Run-Id": runId,
       },
     });
   } catch (error: any) {

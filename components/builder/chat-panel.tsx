@@ -7,6 +7,7 @@ import {
   Paperclip,
   Image as ImageIcon,
   X,
+  Square,
 } from 'lucide-react';
 
 // VS Code-style sidebar panel toggle icon
@@ -35,7 +36,7 @@ import { parseToolCalls, executeToolCalls } from '@/lib/ai/mcp-executor';
 import { bundleProjectWithEsbuild } from '@/lib/preview/esbuild-compiler';
 import { SUGGESTED_PROMPTS } from '@/lib/ai/prompt-templates';
 import { V0Stepper } from './v0-stepper';
-import { BoltPlanCard } from './bolt-plan-card';
+import { BoltPlanCard, PlanMilestone } from './bolt-plan-card';
 import { useCreditsStore, CreditAction } from '@/lib/store/credits-store';
 import { evaluateCandidateChanges } from '@/lib/validation/candidate-pipeline';
 import { parseIntentFromPrompt, MUTATING_INTENT_ACTIONS } from '@/lib/ai/intent-contract';
@@ -80,9 +81,31 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [streamingProse, setStreamingProse] = useState('');
+  const [activeMilestones, setActiveMilestones] = useState<PlanMilestone[]>([]);
+  const [activeFilesRead, setActiveFilesRead] = useState<string[]>([]);
+  const [activeFilesUpdated, setActiveFilesUpdated] = useState<string[]>([]);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCancelGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsStreaming(false);
+    setStreamingFile(null);
+    setStatus('ready', 'Generation cancelled');
+    setActiveSteps(
+      activeSteps.map((s) => (s.status === 'running' ? { ...s, status: 'cancelled' as const } : s))
+    );
+    setActiveMilestones((prev) =>
+      prev.map((m) => (m.status === 'running' ? { ...m, status: 'cancelled' as const } : m))
+    );
+    addLog('[AI] Generation cancelled by user.');
+  };
 
   // Auto-scroll messages
   useEffect(() => {
@@ -337,13 +360,15 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       return;
     }
 
-    // Detect if this is an auto-fix request targeting an active preview error OR screenshot visual fix
-    const isRuntimeFix = Boolean(runtimeError && /\b(fix|repair|error|broken|bug|issue|solve)\b/i.test(query));
+    // Language-agnostic detection: rely on structured IntentContract & runtime error
+    const isRuntimeFix = Boolean(
+      runtimeError &&
+      (intent.action === 'FIX_BUG' || intent.action === 'MODIFY_FEATURE' || intent.action === 'REFACTOR' || intent.action !== 'QUESTION')
+    );
     const isScreenshotFix = Boolean(
       hasExistingFiles &&
       currentImage &&
-      (/\b(fix|repair|solve|change|update|modify|issue|bug|problem|error|not working|broken)\b/i.test(query) ||
-       /(সমস্যা|সমাধান|ঠিক|সংশোধন|কাজ করছে না|ভুল|পরিবর্তন)/i.test(query))
+      (intent.action === 'VISUAL_EDIT' || intent.action === 'VISUAL_RECREATE' || intent.action === 'FIX_BUG' || intent.action === 'MODIFY_FEATURE')
     );
 
     const isFixRequest = isRuntimeFix || isScreenshotFix;
@@ -361,6 +386,14 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     setIsStreaming(true);
     addLog(`[AI] ${isFixRequest ? 'Repairing' : 'Building'}: "${query.slice(0, 60)}..."`);
 
+    // Reset streaming state & initialize AbortController
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setStreamingProse('');
+    setActiveMilestones([]);
+    setActiveFilesRead([]);
+    setActiveFilesUpdated([]);
+
     // Real dynamic timeline — starts with "Analyzing" only
     const analyzeStep: TimelineStep = {
       id: 'analyze-1',
@@ -376,6 +409,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       const response = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           message: effectiveMessage,
           image: currentImage || undefined,
@@ -397,10 +431,12 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       const decoder = new TextDecoder();
       const sseDecoder = new StreamEventDecoder();
       let accumulatedText = '';
+      let accumulatedProse = '';
       let currentSteps: TimelineStep[] = [
         { ...analyzeStep, status: 'completed', label: isFixRequest ? `Diagnosed preview error` : `Analyzed request for ${effectiveFramework.toUpperCase()}` },
       ];
       let trackedFiles = new Set<string>();
+      let trackedReadFiles = new Set<string>();
       let planningStepAdded = false;
 
       while (true) {
@@ -412,7 +448,30 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
 
         const events = sseDecoder.pushChunk(chunk);
         for (const ev of events) {
-          if (ev.type === 'plan') {
+          if (ev.type === 'text_delta' && ev.delta) {
+            accumulatedProse += ev.delta;
+            setStreamingProse(accumulatedProse);
+          } else if (ev.type === 'file_read' && ev.path) {
+            if (!trackedReadFiles.has(ev.path)) {
+              trackedReadFiles.add(ev.path);
+              setActiveFilesRead(Array.from(trackedReadFiles));
+            }
+          } else if (ev.type === 'plan') {
+            if (ev.milestones && ev.milestones.length > 0) {
+              const parsedMilestones: PlanMilestone[] = ev.milestones.map((m: any) => ({
+                id: m.id,
+                label: m.title || m.label,
+                status: m.status || 'pending',
+              }));
+              setActiveMilestones(parsedMilestones);
+            } else if (ev.steps && ev.steps.length > 0) {
+              const parsedMilestones: PlanMilestone[] = ev.steps.map((s: string, idx: number) => ({
+                id: `milestone-${idx + 1}`,
+                label: s,
+                status: idx === 0 ? 'running' : 'pending',
+              }));
+              setActiveMilestones(parsedMilestones);
+            }
             if (!planningStepAdded) {
               planningStepAdded = true;
               const planStep: TimelineStep = {
@@ -429,6 +488,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
             setActiveFile(ev.path);
             if (!trackedFiles.has(ev.path)) {
               trackedFiles.add(ev.path);
+              setActiveFilesUpdated(Array.from(trackedFiles));
               currentSteps = currentSteps.map((s) =>
                 s.type === 'file' && s.status === 'running'
                   ? { ...s, status: 'completed' as const }
@@ -437,17 +497,25 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
               const fileStep: TimelineStep = {
                 id: `step-${ev.path}`,
                 type: 'file',
-                label: `Creating ${ev.path.split('/').pop()}`,
+                label: `Generating ${ev.path.split('/').pop()}`,
                 file: ev.path,
                 status: 'running',
               };
               currentSteps = [...currentSteps, fileStep];
               setActiveSteps(currentSteps);
+
+              setActiveMilestones((prev) =>
+                prev.map((m) =>
+                  m.status === 'running' || m.id.includes('build') || m.id === 'milestone-2' || m.id === 'milestone-1'
+                    ? { ...m, status: 'running', subAction: { type: 'write', target: ev.path, state: 'generating' } }
+                    : m
+                )
+              );
             }
           } else if (ev.type === 'file_complete' && ev.path) {
             currentSteps = currentSteps.map((s) =>
               s.file === ev.path
-                ? { ...s, status: 'completed' as const }
+                ? { ...s, status: 'completed' as const, label: `Generated ${ev.path.split('/').pop()}` }
                 : s
             );
             setActiveSteps(currentSteps);
@@ -546,10 +614,17 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         addLog(`[Candidate Pipeline] ✕ REJECTED: ${evalResult.diagnostics.join(' | ')}`);
         currentSteps = currentSteps.map((s) =>
           s.id === valStepId
-            ? { ...s, status: 'completed' as const, label: `Validation Failed (${evalResult.diagnostics[0] || 'Contract error'})` }
+            ? { ...s, status: 'failed' as const, label: `Validation Failed (${evalResult.diagnostics[0] || 'Contract error'})` }
             : s
         );
         setActiveSteps(currentSteps);
+        setActiveMilestones((prev) =>
+          prev.map((m) =>
+            m.status === 'running'
+              ? { ...m, status: 'failed' as const, error: evalResult.diagnostics[0] || 'Validation rejected candidate' }
+              : m
+          )
+        );
         setIsStreaming(false);
         setStreamingFile(null);
         setStatus('error', 'Validation rejected candidate changes');
@@ -719,21 +794,40 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       // ── OPTIMISTIC CONCURRENCY CHECK (GEN-302) ──
       const currentRevision = useProjectStore.getState().revision || 1;
       if (currentRevision !== baselineRevision) {
-        setIsStreaming(false);
-        setStreamingFile(null);
-        setStatus('ready', 'Concurrent modification detected');
-        addLog(`[Concurrency] ✕ Stale candidate rejected: Workspace revision changed from ${baselineRevision} to ${currentRevision} during generation.`);
-        addMessage({
-          role: 'assistant',
-          content: '⚠️ **Concurrent Modification Detected:** Your workspace files were modified while this AI generation was running. To prevent destroying your newer edits, this candidate was not applied. Your current files remain preserved.',
-          steps: currentSteps,
-          showPreview: true,
-        });
-        return;
+        const currentFiles = useProjectStore.getState().files;
+        const userModifiedPaths = Object.keys(currentFiles).filter(
+          (p) => currentFiles[p] !== baselineFiles[p]
+        );
+        const aiCandidatePaths = Object.keys(candidateFiles);
+        const conflictPaths = userModifiedPaths.filter((p) => aiCandidatePaths.includes(p));
+
+        if (conflictPaths.length === 0 && userModifiedPaths.length > 0) {
+          // Safe 3-way merge: preserve user's modified files while applying candidate changes to non-conflicting files
+          verifiedFiles = {
+            ...verifiedFiles,
+            ...Object.fromEntries(userModifiedPaths.map((p) => [p, currentFiles[p]])),
+          };
+          addLog(`[Concurrency] Seamlessly merged non-conflicting concurrent user edits in: ${userModifiedPaths.join(', ')}`);
+        } else {
+          setIsStreaming(false);
+          setStreamingFile(null);
+          setStatus('ready', 'Concurrent modification detected');
+          addLog(`[Concurrency] ✕ Stale candidate rejected: Workspace revision changed from ${baselineRevision} to ${currentRevision} during generation.`);
+          addMessage({
+            role: 'assistant',
+            content: '⚠️ **Concurrent Modification Detected:** Your workspace files were modified while this AI generation was running. To prevent destroying your newer edits, this candidate was not applied. Your current files remain preserved.',
+            steps: currentSteps,
+            showPreview: true,
+          });
+          return;
+        }
       }
 
       // Validation AND compilation passed, revision intact: Atomically commit to authoritative project store
       setFiles(verifiedFiles);
+      setActiveMilestones((prev) =>
+        prev.map((m) => ({ ...m, status: 'completed' as const }))
+      );
       const entryFile = effectiveFramework === 'vite'
         ? (verifiedFiles['src/App.tsx'] ? 'src/App.tsx' : verifiedFiles['src/App.jsx'] ? 'src/App.jsx' : Object.keys(verifiedFiles)[0])
         : effectiveFramework === 'astro'
@@ -765,16 +859,25 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
 
       // Clean up response explanation: strip internal prompt rules or thoughts
       const fileList = Object.keys(verifiedFiles);
-      const chosenExplanation = mcpExplanation || aiExplanation;
       let cleanIntro = '';
-      if (chosenExplanation && chosenExplanation.length > 10) {
-        // Strip out any leaked rules / diagnostic prompts if AI included them
-        const sanitized = chosenExplanation
+      if (accumulatedProse && accumulatedProse.trim().length > 10) {
+        const sanitized = accumulatedProse
           .replace(/Assessment of initial workspace state[\s\S]*?Let's check the rules:[\s\S]*?(?=\n\n|$)/gi, '')
           .replace(/Prior to writing code[\s\S]*?(?=\n\n|$)/gi, '')
           .replace(/### (?:TYPES-FIRST|ARCHITECTURE-FIRST|CRITICAL GENERATION RULES)[\s\S]*?(?=\n\n|$)/gi, '')
           .trim();
-        cleanIntro = sanitized.split('\n\n')[0]?.trim() || '';
+        cleanIntro = sanitized.split('\n\n')[0]?.trim() || sanitized.slice(0, 300);
+      }
+      if (!cleanIntro) {
+        const chosenExplanation = mcpExplanation || aiExplanation;
+        if (chosenExplanation && chosenExplanation.length > 10) {
+          const sanitized = chosenExplanation
+            .replace(/Assessment of initial workspace state[\s\S]*?Let's check the rules:[\s\S]*?(?=\n\n|$)/gi, '')
+            .replace(/Prior to writing code[\s\S]*?(?=\n\n|$)/gi, '')
+            .replace(/### (?:TYPES-FIRST|ARCHITECTURE-FIRST|CRITICAL GENERATION RULES)[\s\S]*?(?=\n\n|$)/gi, '')
+            .trim();
+          cleanIntro = sanitized.split('\n\n')[0]?.trim() || '';
+        }
       }
       if (!cleanIntro || cleanIntro.length < 10) {
         cleanIntro = `I'll build a complete ${effectiveFramework.toUpperCase()} application with ${fileList.length} files. Let's inspect the setup and verify the components.`;
@@ -794,6 +897,19 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
 
       setStatus('ready', 'Application ready');
     } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        addLog('[AI] Generation cancelled by user.');
+        setIsStreaming(false);
+        setStreamingFile(null);
+        setStatus('ready', 'Generation cancelled');
+        setActiveSteps(
+          activeSteps.map((s) => (s.status === 'running' ? { ...s, status: 'cancelled' as const } : s))
+        );
+        setActiveMilestones((prev) =>
+          prev.map((m) => (m.status === 'running' ? { ...m, status: 'cancelled' as const } : m))
+        );
+        return;
+      }
       console.error('Generation failed:', err);
       setIsStreaming(false);
       setStreamingFile(null);
@@ -882,12 +998,16 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
           <div className="w-full text-xs">
             <BoltPlanCard
               introText={
-                runtimeError
+                streamingProse ||
+                (runtimeError
                   ? `Diagnosing preview sandbox error and applying surgical repair for ${framework.toUpperCase()}...`
                   : Object.keys(files).length > 0
                   ? `Analyzing requested changes and updating your ${framework.toUpperCase()} application...`
-                  : `I'll build a complete ${framework.toUpperCase()} application. Let's inspect the setup and create the components.`
+                  : `I'll build a complete ${framework.toUpperCase()} application. Let's inspect the setup and create the components.`)
               }
+              milestones={activeMilestones}
+              filesRead={activeFilesRead}
+              filesUpdated={activeFilesUpdated}
               steps={activeSteps}
               isStreaming={true}
             />
@@ -975,19 +1095,26 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
               <Paperclip className="w-3.5 h-3.5" />
             </button>
 
-            {/* Send button with premium styling */}
-            <button
-              type="submit"
-              disabled={(!input.trim() && !attachedImage) || status === 'generating'}
-              className="absolute right-3 bottom-3 p-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 disabled:from-zinc-800 disabled:to-zinc-800 text-white disabled:text-zinc-500 transition-all duration-200 shadow-lg shadow-blue-900/50 disabled:shadow-none hover:scale-105 active:scale-95"
-              title="Send with AI"
-            >
-              {status === 'generating' ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
+            {/* Send / Cancel button */}
+            {status === 'generating' ? (
+              <button
+                type="button"
+                onClick={handleCancelGeneration}
+                className="absolute right-3 bottom-3 p-2 rounded-lg bg-red-600 hover:bg-red-500 text-white transition-all duration-200 shadow-lg shadow-red-900/50 hover:scale-105 active:scale-95 cursor-pointer"
+                title="Stop Generating"
+              >
+                <Square className="w-4 h-4 fill-white" />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={(!input.trim() && !attachedImage)}
+                className="absolute right-3 bottom-3 p-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 disabled:from-zinc-800 disabled:to-zinc-800 text-white disabled:text-zinc-500 transition-all duration-200 shadow-lg shadow-blue-900/50 disabled:shadow-none hover:scale-105 active:scale-95"
+                title="Send with AI"
+              >
                 <Send className="w-4 h-4" />
-              )}
-            </button>
+              </button>
+            )}
           </div>
         </form>
         </div>

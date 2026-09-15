@@ -8,8 +8,12 @@ export type StreamEventType =
   | 'message_start'
   | 'intent'
   | 'plan'
+  | 'plan_step_start'
+  | 'plan_step_complete'
+  | 'plan_step_fail'
   | 'text_delta'
   | 'tool_call'
+  | 'file_read'
   | 'file_start'
   | 'file_delta'
   | 'file_complete'
@@ -34,6 +38,8 @@ export interface BaseStreamEvent {
   type: StreamEventType;
   sequenceId: number;
   timestamp: string;
+  runId?: string;
+  stepId?: string;
 }
 
 export interface StartEvent extends BaseStreamEvent {
@@ -47,10 +53,45 @@ export interface IntentEvent extends BaseStreamEvent {
   intent: IntentContract;
 }
 
+export interface PlanMilestoneItem {
+  id: string;
+  title: string;
+  description?: string;
+  order?: number;
+  status?: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+}
+
 export interface PlanEvent extends BaseStreamEvent {
   type: 'plan';
   steps: string[];
+  milestones?: PlanMilestoneItem[];
   estimatedFiles: string[];
+}
+
+export interface PlanStepStartEvent extends BaseStreamEvent {
+  type: 'plan_step_start';
+  stepId: string;
+  title: string;
+  order?: number;
+}
+
+export interface PlanStepCompleteEvent extends BaseStreamEvent {
+  type: 'plan_step_complete';
+  stepId: string;
+  summary?: string;
+}
+
+export interface PlanStepFailEvent extends BaseStreamEvent {
+  type: 'plan_step_fail';
+  stepId: string;
+  error: string;
+}
+
+export interface FileReadEvent extends BaseStreamEvent {
+  type: 'file_read';
+  path: string;
+  reason?: string;
+  tokenCount?: number;
 }
 
 export interface TextDeltaEvent extends BaseStreamEvent {
@@ -140,8 +181,12 @@ export type StreamEvent =
   | StartEvent
   | IntentEvent
   | PlanEvent
+  | PlanStepStartEvent
+  | PlanStepCompleteEvent
+  | PlanStepFailEvent
   | TextDeltaEvent
   | ToolCallEvent
+  | FileReadEvent
   | FileStartEvent
   | FileDeltaEvent
   | FileCompleteEvent
@@ -254,9 +299,20 @@ export function createTypedAgentSSEStream(params: {
   rawStream: ReadableStream<Uint8Array>;
   intent: IntentContract;
   messageId?: string;
+  runId?: string;
   planSteps?: string[];
+  milestones?: PlanMilestoneItem[];
+  retrievedSnippets?: Array<{ path: string; relevanceReason?: string; content?: string }>;
 }): ReadableStream<Uint8Array> {
-  const { rawStream, intent, messageId = 'msg_' + Date.now().toString(36), planSteps = [] } = params;
+  const {
+    rawStream,
+    intent,
+    messageId = 'msg_' + Date.now().toString(36),
+    runId = 'run_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7),
+    planSteps = [],
+    milestones,
+    retrievedSnippets = [],
+  } = params;
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   const startTime = Date.now();
@@ -269,6 +325,7 @@ export function createTypedAgentSSEStream(params: {
         encoder.encode(
           formatStreamEvent({
             type: 'start',
+            runId,
             sequenceId: ++sequenceId,
             timestamp: new Date().toISOString(),
             messageId,
@@ -282,6 +339,7 @@ export function createTypedAgentSSEStream(params: {
         encoder.encode(
           formatStreamEvent({
             type: 'intent',
+            runId,
             sequenceId: ++sequenceId,
             timestamp: new Date().toISOString(),
             intent,
@@ -289,7 +347,26 @@ export function createTypedAgentSSEStream(params: {
         )
       );
 
-      // 3. Emit plan event
+      // 3. Emit file_read events for existing retrieved context
+      if (retrievedSnippets && retrievedSnippets.length > 0) {
+        for (const snippet of retrievedSnippets) {
+          controller.enqueue(
+            encoder.encode(
+              formatStreamEvent({
+                type: 'file_read',
+                runId,
+                sequenceId: ++sequenceId,
+                timestamp: new Date().toISOString(),
+                path: snippet.path,
+                reason: snippet.relevanceReason,
+                tokenCount: snippet.content ? Math.ceil(snippet.content.length / 4) : undefined,
+              })
+            )
+          );
+        }
+      }
+
+      // 4. Emit plan event
       const steps = planSteps.length > 0 ? planSteps : [
         `Analyze ${intent.framework} requirements`,
         `Retrieve relevant component context`,
@@ -299,9 +376,11 @@ export function createTypedAgentSSEStream(params: {
         encoder.encode(
           formatStreamEvent({
             type: 'plan',
+            runId,
             sequenceId: ++sequenceId,
             timestamp: new Date().toISOString(),
             steps,
+            milestones,
             estimatedFiles: intent.targetFiles || [],
           })
         )
@@ -329,6 +408,7 @@ export function createTypedAgentSSEStream(params: {
                 encoder.encode(
                   formatStreamEvent({
                     type: 'text_delta',
+                    runId,
                     sequenceId: ++sequenceId,
                     timestamp: new Date().toISOString(),
                     delta: proseBefore,
@@ -341,6 +421,7 @@ export function createTypedAgentSSEStream(params: {
               encoder.encode(
                 formatStreamEvent({
                   type: 'file_start',
+                  runId,
                   sequenceId: ++sequenceId,
                   timestamp: new Date().toISOString(),
                   path: activeFile,
@@ -359,6 +440,7 @@ export function createTypedAgentSSEStream(params: {
                 encoder.encode(
                   formatStreamEvent({
                     type: 'file_delta',
+                    runId,
                     sequenceId: ++sequenceId,
                     timestamp: new Date().toISOString(),
                     path: activeFile,
@@ -371,6 +453,7 @@ export function createTypedAgentSSEStream(params: {
               encoder.encode(
                 formatStreamEvent({
                   type: 'file_complete',
+                  runId,
                   sequenceId: ++sequenceId,
                   timestamp: new Date().toISOString(),
                   path: activeFile,
@@ -391,6 +474,7 @@ export function createTypedAgentSSEStream(params: {
               encoder.encode(
                 formatStreamEvent({
                   type: 'file_delta',
+                  runId,
                   sequenceId: ++sequenceId,
                   timestamp: new Date().toISOString(),
                   path: activeFile,
@@ -406,6 +490,7 @@ export function createTypedAgentSSEStream(params: {
               encoder.encode(
                 formatStreamEvent({
                   type: 'text_delta',
+                  runId,
                   sequenceId: ++sequenceId,
                   timestamp: new Date().toISOString(),
                   delta,
@@ -422,6 +507,7 @@ export function createTypedAgentSSEStream(params: {
               encoder.encode(
                 formatStreamEvent({
                   type: 'file_delta',
+                  runId,
                   sequenceId: ++sequenceId,
                   timestamp: new Date().toISOString(),
                   path: activeFile,
@@ -433,6 +519,7 @@ export function createTypedAgentSSEStream(params: {
               encoder.encode(
                 formatStreamEvent({
                   type: 'file_complete',
+                  runId,
                   sequenceId: ++sequenceId,
                   timestamp: new Date().toISOString(),
                   path: activeFile,
@@ -446,6 +533,7 @@ export function createTypedAgentSSEStream(params: {
               encoder.encode(
                 formatStreamEvent({
                   type: 'text_delta',
+                  runId,
                   sequenceId: ++sequenceId,
                   timestamp: new Date().toISOString(),
                   delta: buffer,
@@ -455,11 +543,12 @@ export function createTypedAgentSSEStream(params: {
           }
         }
 
-        // 4. Emit validation stage
+        // 5. Emit validation stage
         controller.enqueue(
           encoder.encode(
             formatStreamEvent({
               type: 'validation',
+              runId,
               sequenceId: ++sequenceId,
               timestamp: new Date().toISOString(),
               stage: 'static',
@@ -468,11 +557,12 @@ export function createTypedAgentSSEStream(params: {
           )
         );
 
-        // 5. Emit complete event
+        // 6. Emit complete event
         controller.enqueue(
           encoder.encode(
             formatStreamEvent({
               type: 'complete',
+              runId,
               sequenceId: ++sequenceId,
               timestamp: new Date().toISOString(),
               totalDurationMs: Date.now() - startTime,
@@ -487,6 +577,7 @@ export function createTypedAgentSSEStream(params: {
           encoder.encode(
             formatStreamEvent({
               type: 'error',
+              runId,
               sequenceId: ++sequenceId,
               timestamp: new Date().toISOString(),
               code: 'STREAM_TRANSIT_ERROR',

@@ -225,8 +225,15 @@ export function buildRetrievalContext(
     }
   }
 
-  // Special heuristics for common targets (e.g. navbar, logo, menu, header, footer)
-  if (intent.targetDescription.toLowerCase().includes('logo') || intent.targetDescription.toLowerCase().includes('navbar')) {
+  // Heuristics for common UI elements and navigational targets
+  const targetDescLower = intent.targetDescription.toLowerCase();
+  const isNavTarget =
+    targetDescLower.includes('logo') ||
+    targetDescLower.includes('navbar') ||
+    targetDescLower.includes('nav') ||
+    targetDescLower.includes('header') ||
+    targetDescLower.includes('brand');
+  if (isNavTarget) {
     for (const p of Object.keys(files)) {
       const clean = p.replace(/^\/+/, '');
       if (/navbar|header|logo|nav/i.test(clean)) {
@@ -235,7 +242,11 @@ export function buildRetrievalContext(
     }
   }
 
-  if (intent.targetDescription.toLowerCase().includes('menu') || intent.targetDescription.toLowerCase().includes('hamburger')) {
+  const isMenuTarget =
+    targetDescLower.includes('menu') ||
+    targetDescLower.includes('hamburger') ||
+    targetDescLower.includes('drawer');
+  if (isMenuTarget) {
     for (const p of Object.keys(files)) {
       const clean = p.replace(/^\/+/, '');
       if (/navbar|menu|header|nav|layout/i.test(clean)) {

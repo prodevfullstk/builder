@@ -22,7 +22,7 @@ export interface TimelineStep {
   type: 'thought' | 'inspect' | 'design' | 'file' | 'preview';
   label: string;
   detail?: string;
-  status: 'pending' | 'running' | 'completed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   file?: string;
   linesAdded?: number;
   duration?: string;

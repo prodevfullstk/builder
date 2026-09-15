@@ -47,7 +47,7 @@ interface SemanticDomainWeights {
 }
 
 // Multilingual concept roots mapped to semantic vectors
-// Uses multilingual subwords and semantic tokens across English, Bengali, Hindi, Spanish, French, Arabic, Japanese
+// Uses multilingual subwords and semantic tokens across English, Bengali, Hindi, Spanish, French, Arabic, Japanese, German, Russian, Italian
 const SEMANTIC_CONCEPT_PROJECTIONS: Array<{
   pattern: RegExp;
   weights: Partial<SemanticDomainWeights>;
@@ -56,33 +56,33 @@ const SEMANTIC_CONCEPT_PROJECTIONS: Array<{
   // --- INQUIRY / QUESTION / EXPLAIN DOMAIN ---
   {
     // Question marks and interrogative punctuation
-    pattern: /[\?؟¿]|^(?:what|how|why|where|who|when|which|can\s+you|কী|কি|কেন|কোথায়|কিভাবে|क्या|क्यों|कैसे|qué|cómo|por\s+qué|pourquoi|comment|ماذا|كيف|لماذا|どう|なぜ|何)/i,
+    pattern: /[\?؟¿]|^(?:what|how|why|where|who|when|which|can\s+you|কী|কি|কেন|কোথায়|কিভাবে|क्या|क्यों|कैसे|qué|cómo|por\s+qué|pourquoi|comment|ماذا|كيف|لماذا|どう|なぜ|何|warum|wie|was|wo|wer|почему|как|что|где|кто|perché|come|cosa|dove|chi)/i,
     weights: { question: 2.8, explain: 1.2 },
     factor: 1.0,
   },
   {
     // Explanation intent
-    pattern: /(?:explain|describe|clarify|walk\s*through|details\s+about|ব্যাখ্যা|বর্ণনা|समझाएं|विवरण|expliquer|décrire|explicar|describir|اشرح|وضح|説明|解説)/i,
+    pattern: /(?:explain|describe|clarify|walk\s*through|details\s+about|ব্যাখ্যা|বর্ণনা|समझाएं|विवरण|expliquer|décrire|explicar|describir|اشرح|وضح|説明|解説|erkläre|beschreibe|объясни|опиши|spiega|descrivi)/i,
     weights: { explain: 3.2, question: 0.8 },
     factor: 1.0,
   },
   {
     // Inspection / Audit intent
-    pattern: /(?:inspect|audit|check\s+security|scan|list\s+files|verify\s+deps|নিরীক্ষা|তালিকা|जांच|निरीक्षण|auditer|vérifier|inspeccionar|auditar|افحص|راجع|監査|検査|確認)/i,
+    pattern: /(?:inspect|audit|check\s+security|scan|list\s+files|verify\s+deps|নিরীক্ষা|তালিকা|जांच|निरीक्षण|auditer|vérifier|inspeccionar|auditar|افحص|راجع|監査|検査|確認|prüfe|untersuche|проверь|проинспектируй|ispeziona|verifica)/i,
     weights: { inspect: 3.5 },
     factor: 1.0,
   },
 
   // --- ANOMALY / REPAIR / BUG DOMAIN ---
   {
-    pattern: /(?:bug|fix|broken|crash|error|exception|fail|issue|defect|repair|wrong|ত্রুটি|ভাঙা|সমস্যা|ঠিক\s*করো|बग|त्रुटि|खराब|सुधार|erreur|bogue|panne|réparer|échoue|fallo|roto|corregir|reparar|خطأ|عطل|أصلح|خلل|バグ|エラー|不具合|修正|クラッシュ)/i,
+    pattern: /(?:bug|fix|broken|crash|error|exception|fail|issue|defect|repair|wrong|ত্রুটি|ভাঙা|সমস্যা|ঠিক\s*করো|बग|त्रुटि|खराब|सुधार|erreur|bogue|panne|réparer|échoue|fallo|roto|corregir|reparar|خطأ|عطل|أصلح|خلل|バグ|エラー|不具合|修正|クラッシュ|repariere|behebe|fehler|исправь|почини|ошибка|баг|correggi|ripara|errore)/i,
     weights: { fixBug: 3.6 },
     factor: 1.0,
   },
 
   // --- REFACTOR / CLEANUP DOMAIN ---
   {
-    pattern: /(?:refactor|clean\s*up|reorganize|restructure|tidy|optimize\s+structure|পুনর্গঠন|পরিষ্কার|पुनर्गठन|सफाई|refactoriser|nettoyer|réorganiser|refactorizar|limpiar|reorganizar|إعادة\s*هيكلة|تنظيم|リファクタ|整理|再編成)/i,
+    pattern: /(?:refactor|clean\s*up|reorganize|restructure|tidy|optimize\s+structure|পুনর্গঠন|পরিষ্কার|पुनर्गठन|सफाई|refactoriser|nettoyer|réorganiser|refactorizar|limpiar|reorganizar|إعادة\s*هيكلة|تنظيم|リファクタ|整理|再編成|refaktoriere|aufräumen|рефакторинг|наведи\s+порядок|riorganizza|pulisci)/i,
     weights: { refactor: 3.5 },
     factor: 1.0,
   },
@@ -90,13 +90,13 @@ const SEMANTIC_CONCEPT_PROJECTIONS: Array<{
   // --- ADDITIVE / EXPANSION / FEATURE ADD DOMAIN ---
   {
     // Direct addition or new feature concepts across languages
-    pattern: /(?:add|integrate|include|implement|support|new\s+feature|bring\s+in|যোগ\s*করো|যুক্ত\s*করো|নতুন\s+ফিচার|जोड़ें|शामिल\s*करें|नया\s+फीचर|ajouter|intégrer|nouvelle\s+fonctionnalité|añadir|agregar|incluir|nueva\s+función|أضف|أدرج|ميزة\s*جديدة|追加|組み込み|新機能)/i,
+    pattern: /(?:add|integrate|include|implement|support|new\s+feature|bring\s+in|যোগ\s*করো|যুক্ত\s*করো|নতুন\s+ফিচার|जोड़ें|शामिल\s*करें|नया\s+फीचर|ajouter|intégrer|nouvelle\s+fonctionnalité|añadir|agregar|incluir|nueva\s+función|أضف|أدرج|ميزة\s*جديدة|追加|組み込み|新機能|füge\s+hinzu|hinzufügen|neues\s+feature|добавь|включи|новая\s+функция|aggiungi|includi|nuova\s+funzione)/i,
     weights: { addFeature: 3.2 },
     factor: 1.0,
   },
   {
     // Adversarial / verb-free expansion concepts (e.g. mobile navigation menu, responsive drawer, compact control on small screens)
-    pattern: /(?:mobile\s+nav|navigation\s+menu|hamburger|drawer|compact\s+control|dropdown\s+menu|sidebar|মোবাইল\s+মেনু|नेविगेशन\s+मेनू|menu\s+de\s+navigation|menú\s+de\s+navegación|قائمة\s+تنقل|ナビゲーションメニュー)/i,
+    pattern: /(?:mobile\s+nav|navigation\s+menu|hamburger|drawer|compact\s+control|dropdown\s+menu|sidebar|মোবাইল\s+মেনু|नेविगेशन\s+मेनू|menu\s+de\s+navigation|menú\s+de\s+navegación|قائمة\s+تنقل|ナビゲーションメニュー|navigationsmenü|меню\s+навигации|menu\s+di\s+navigazione)/i,
     weights: { addFeature: 2.6, modifyFeature: 1.0 },
     factor: 1.0,
   },
@@ -109,21 +109,21 @@ const SEMANTIC_CONCEPT_PROJECTIONS: Array<{
 
   // --- MODIFICATION / ADJUSTMENT DOMAIN ---
   {
-    pattern: /(?:change|update|modify|adjust|smaller|larger|color|style|tweak|replace|switch|পরিবর্তন|বদল|আপডেট|ছোট|বড়|रंग|बदलें|छोटा|बड़ा|modifier|changer|ajuster|couleur|modificar|cambiar|ajustar|color|عدل|غير|بدل|لون|変更|調整|スタイル|色|更新)/i,
+    pattern: /(?:change|update|modify|adjust|smaller|larger|color|style|tweak|replace|switch|পরিবর্তন|বদল|আপডেট|ছোট|বড়|रंग|बदलें|छोटा|बड़ा|modifier|changer|ajuster|couleur|modificar|cambiar|ajustar|color|عدل|غير|بدل|لون|変更|調整|スタイル|色|更新|ändere|anpassen|kleiner|größer|измени|уменьши|увеличь|поменяй|modifica|cambia|più\s+piccolo|più\s+grande)/i,
     weights: { modifyFeature: 2.8 },
     factor: 1.0,
   },
 
   // --- PROJECT SCAFFOLDING / CREATION DOMAIN ---
   {
-    pattern: /(?:scaffold|from\s+scratch|landing\s+page|portfolio|saas\s+app|full\s+website|new\s+project|new\s+app|তৈরি\s*করো|বানাও|नया\s+प्रोजेक्ट|वेबसाइट\s+बनाएं|créer\s+un\s+site|nouveau\s+projet|crear\s+un\s+sitio|nuevo\s+proyecto|أنشئ\s+موقع|مشروع\s+جديد|新規プロジェクト|サイト作成)/i,
+    pattern: /(?:scaffold|from\s+scratch|landing\s+page|portfolio|saas\s+app|full\s+website|new\s+project|new\s+app|bookstore|dashboard|recipe|task\s+management|e-commerce|store|магазин|librería|boutique|তৈরি\s*করো|বানাও|নয়া|नया\s+प्रोजेक्ट|वेबसाइट\s+बनाएं|créer\s+un\s+site|nouveau\s+projet|crear\s+un\s+sitio|nuevo\s+proyecto|أنشئ\s+موقع|مشروع\s+جديد|新規プロジェクト|サイト作成|erstelle|baue|neue\s+webseite|создай\s+сайт|новый\s+проект|crea\s+un\s+sito|nuovo\s+progetto)/i,
     weights: { create: 3.4 },
     factor: 1.0,
   },
 
   // --- CONTINUATION DOMAIN ---
   {
-    pattern: /(?:continue|proceed|next\s+step|keep\s+going|এগিয়ে\s*যাও|आगे\s*बढ़ें|continuer|procéder|continuar|proseguir|تابع|استمر|続けて|進めて)/i,
+    pattern: /(?:continue|proceed|next\s+step|keep\s+going|এগিয়ে\s*যাও|आगे\s*बढ़ें|continuer|procéder|continuar|proseguir|تابع|استمر|続けて|進めて|weiter|fortfahren|продолжай|continua|prosegui)/i,
     weights: { continueBuild: 3.2 },
     factor: 1.0,
   },
