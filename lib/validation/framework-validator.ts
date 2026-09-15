@@ -289,3 +289,219 @@ export function validateFrameworkContract(
     diagnostics,
   };
 }
+
+/**
+ * Deterministic Framework Scaffold Generator
+ * Ensures that essential framework boilerplate (package.json, layout, entry points)
+ * is present during new builds even if omitted by the AI generator.
+ */
+export function ensureFrameworkScaffold(
+  framework: string,
+  files: Record<string, string>
+): Record<string, string> {
+  const normalized = (framework || 'nextjs').toLowerCase().trim();
+  const result: Record<string, string> = { ...files };
+
+  if (normalized === 'nextjs') {
+    // 1. package.json
+    if (!result['package.json'] && !result['/package.json']) {
+      result['package.json'] = JSON.stringify(
+        {
+          name: 'opendork-nextjs-app',
+          version: '0.1.0',
+          private: true,
+          scripts: {
+            dev: 'next dev',
+            build: 'next build',
+            start: 'next start',
+            lint: 'next lint',
+          },
+          dependencies: {
+            next: '^15.0.0',
+            react: '^19.0.0',
+            'react-dom': '^19.0.0',
+            'lucide-react': '^0.344.0',
+            clsx: '^2.1.0',
+            'tailwind-merge': '^2.2.1',
+          },
+          devDependencies: {
+            typescript: '^5.0.0',
+            '@types/node': '^20.0.0',
+            '@types/react': '^19.0.0',
+            '@types/react-dom': '^19.0.0',
+            tailwindcss: '^3.4.1',
+            postcss: '^8.4.35',
+          },
+        },
+        null,
+        2
+      );
+    } else {
+      // Ensure 'next' dependency exists in existing package.json if invalid
+      try {
+        const pkg = JSON.parse(result['package.json']);
+        if (!pkg.dependencies || !pkg.dependencies['next']) {
+          pkg.dependencies = {
+            next: '^15.0.0',
+            react: '^19.0.0',
+            'react-dom': '^19.0.0',
+            'lucide-react': '^0.344.0',
+            clsx: '^2.1.0',
+            'tailwind-merge': '^2.2.1',
+            ...(pkg.dependencies || {}),
+          };
+          result['package.json'] = JSON.stringify(pkg, null, 2);
+        }
+      } catch {
+        // Leave as is
+      }
+    }
+
+    // 2. app/layout.tsx
+    const hasLayout = Object.keys(result).some((p) =>
+      /^(\/)?app\/layout\.(tsx|jsx|js)$/i.test(p) || /^(\/)?pages\/_app\.(tsx|jsx|js)$/i.test(p)
+    );
+    if (!hasLayout) {
+      result['app/layout.tsx'] = `import type { Metadata } from 'next';
+import './globals.css';
+
+export const metadata: Metadata = {
+  title: 'Web Application',
+  description: 'Built with Opendork AI',
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en" className="dark">
+      <body className="min-h-screen bg-zinc-950 text-zinc-100 antialiased font-sans">
+        {children}
+      </body>
+    </html>
+  );
+}
+`;
+    }
+
+    // 3. app/globals.css
+    const hasCss = Object.keys(result).some((p) =>
+      /^(\/)?app\/globals\.css$/i.test(p) || /^(\/)?styles\/globals\.css$/i.test(p)
+    );
+    if (!hasCss) {
+      result['app/globals.css'] = `@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #09090b;
+  --foreground: #fafafa;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+`;
+    }
+
+    // 4. lib/utils.ts
+    const hasUtils = Object.keys(result).some((p) =>
+      /^(\/)?(lib|src\/lib)\/utils\.(ts|js)$/i.test(p)
+    );
+    if (!hasUtils) {
+      result['lib/utils.ts'] = `import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+`;
+    }
+  } else if (normalized === 'vite') {
+    // 1. package.json
+    if (!result['package.json'] && !result['/package.json']) {
+      result['package.json'] = JSON.stringify(
+        {
+          name: 'opendork-vite-app',
+          private: true,
+          version: '0.0.0',
+          type: 'module',
+          scripts: {
+            dev: 'vite',
+            build: 'tsc && vite build',
+            preview: 'vite preview',
+          },
+          dependencies: {
+            react: '^18.3.1',
+            'react-dom': '^18.3.1',
+            'lucide-react': '^0.344.0',
+            clsx: '^2.1.0',
+            'tailwind-merge': '^2.2.1',
+          },
+          devDependencies: {
+            '@types/react': '^18.3.3',
+            '@types/react-dom': '^18.3.0',
+            '@vitejs/plugin-react': '^4.3.0',
+            typescript: '^5.2.2',
+            vite: '^5.3.1',
+            tailwindcss: '^3.4.1',
+            postcss: '^8.4.35',
+          },
+        },
+        null,
+        2
+      );
+    }
+
+    // 2. index.html
+    if (!result['index.html'] && !result['/index.html']) {
+      result['index.html'] = `<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Web Application</title>
+  </head>
+  <body class="min-h-screen bg-zinc-950 text-zinc-100">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+`;
+    }
+
+    // 3. src/main.tsx
+    if (!result['src/main.tsx'] && !result['src/main.jsx']) {
+      result['src/main.tsx'] = `import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+`;
+    }
+
+    // 4. src/index.css
+    if (!result['src/index.css'] && !result['src/App.css']) {
+      result['src/index.css'] = `@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  background-color: #09090b;
+  color: #fafafa;
+}
+`;
+    }
+  }
+
+  return result;
+}

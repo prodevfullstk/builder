@@ -21,6 +21,8 @@ import { parseFinalOutput } from "@/lib/ai/code-parser";
 import { parseToolCalls, executeToolCalls } from "@/lib/ai/mcp-executor";
 import { useCreditsStore } from "@/lib/store/credits-store";
 import { evaluateCandidateChanges } from "@/lib/validation/candidate-pipeline";
+import { ensureFrameworkScaffold } from "@/lib/validation/framework-validator";
+import { StreamEventDecoder } from "@/lib/ai/stream-events";
 import { synthesizeProjectRequirements } from "@/lib/ai/requirements-generator";
 import { AuthModal } from "@/components/auth/auth-modal";
 import { useAuthStore, getClientAuthHeaders, initAuthFromUrlHash } from "@/lib/auth/supabase-auth";
@@ -200,16 +202,31 @@ function BuilderWorkspace() {
 
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
-          let accumulated = "";
+          const sseDecoder = new StreamEventDecoder();
+          let accumulatedRaw = "";
+          let accumulatedProse = "";
+          const streamedFiles: Record<string, string> = {};
 
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            accumulated += decoder.decode(value, { stream: true });
+            const chunk = decoder.decode(value, { stream: true });
+            accumulatedRaw += chunk;
+
+            const events = sseDecoder.pushChunk(chunk);
+            for (const ev of events) {
+              if (ev.type === 'text_delta' && ev.delta) {
+                accumulatedProse += ev.delta;
+              } else if (ev.type === 'file_delta' && ev.path) {
+                streamedFiles[ev.path] = (streamedFiles[ev.path] || '') + ev.delta;
+              }
+            }
           }
 
-          // Execute MCP tool calls if emitted
-          const { toolCalls, explanation: mcpExplanation } = parseToolCalls(accumulated);
+          const textToParse = accumulatedProse.trim() ? accumulatedProse : accumulatedRaw;
+
+          // 1. Execute MCP tool calls if emitted
+          const { toolCalls, explanation: mcpExplanation } = parseToolCalls(textToParse);
           let genFiles: Record<string, string> = {};
 
           if (toolCalls.length > 0) {
@@ -217,9 +234,12 @@ function BuilderWorkspace() {
             genFiles = res.updatedFiles;
           }
 
-          // Fallback to standard parser
-          const { files: parsedFiles, aiExplanation } = parseFinalOutput(accumulated);
-          const candidateFiles = { ...parsedFiles, ...genFiles };
+          // 2. Extract files via standard parser
+          const { files: parsedFiles, aiExplanation } = parseFinalOutput(textToParse);
+          let candidateFiles: Record<string, string> = { ...parsedFiles, ...genFiles, ...streamedFiles };
+
+          // 3. Ensure framework scaffold if any boilerplate file was omitted by AI
+          candidateFiles = ensureFrameworkScaffold(targetFramework, candidateFiles);
 
           // Synthesize structured requirements specification (P1-D requirement)
           const { spec, requirementsMarkdown } = synthesizeProjectRequirements(

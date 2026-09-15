@@ -254,18 +254,78 @@ export function extractStreamingState(markdown: string): StreamingParseResult {
 }
 
 /**
+ * Unwraps raw SSE chunks if raw stream text was passed instead of decoded delta.
+ */
+export function unwrapSSEText(raw: string): string {
+  if (!raw || (!raw.includes('data: ') && !raw.includes('event: '))) {
+    return raw;
+  }
+  let unwrapped = '';
+  const lines = raw.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('data: ')) {
+      const dataStr = trimmed.slice(6).trim();
+      if (!dataStr || dataStr === '[DONE]') continue;
+      try {
+        const json = JSON.parse(dataStr);
+        if (typeof json.delta === 'string') unwrapped += json.delta;
+        else if (typeof json.content === 'string') unwrapped += json.content;
+      } catch {
+        // Not JSON
+      }
+    }
+  }
+  return unwrapped.trim() ? unwrapped : raw;
+}
+
+/**
+ * Extracts files emitted via <TOOL_CALL> blocks (e.g. write_file)
+ */
+export function extractToolCallFiles(text: string): Record<string, string> {
+  const files: Record<string, string> = {};
+  if (!text.includes('<TOOL_CALL>')) return files;
+
+  const regex = /<TOOL_CALL>\s*([\s\S]*?)\s*<\/TOOL_CALL>/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const rawJson = match[1].trim();
+    const tryParse = (src: string) => {
+      try {
+        const parsed = JSON.parse(src);
+        if (parsed.name === 'write_file' && parsed.args?.path && typeof parsed.args?.content === 'string') {
+          const cleanPath = String(parsed.args.path).replace(/^\/+/, '');
+          if (cleanPath) files[cleanPath] = parsed.args.content;
+        }
+      } catch {}
+    };
+    tryParse(rawJson);
+    if (Object.keys(files).length === 0) {
+      const sanitized = rawJson
+        .replace(/\r\n/g, '\\n')
+        .replace(/(?<!\\)\n/g, '\\n')
+        .replace(/(?<!\\)\t/g, '\\t');
+      tryParse(sanitized);
+    }
+  }
+  return files;
+}
+
+/**
  * Final parse — called when streaming completes.
  * Priority order:
  *   1. <PATCHES> block (if present)
  *   2. <FILES> JSON block (if present)
- *   3. Markdown fences (fallback)
+ *   3. <TOOL_CALL> write_file blocks
+ *   4. Markdown fences (fallback)
  * Returns explicit parse status: 'parsed' | 'malformed' | 'partial' | 'unsupported'.
  * For targeted modifications (forTargetedModification = true), synthetic filenames are rejected.
  */
 export function parseFinalOutput(
-  fullText: string,
+  rawText: string,
   options?: { forTargetedModification?: boolean }
 ): FinalParseResult {
+  const fullText = unwrapSSEText(rawText);
   const aiExplanation = parseAIExplanation(fullText);
   const diagnostics: string[] = [];
   const forTargeted = options?.forTargetedModification || false;
@@ -294,40 +354,40 @@ export function parseFinalOutput(
     }
   }
 
-  // 2. Try structured JSON (<FILES> block)
+  // 2. Extract files from <FILES> structured JSON
+  let structuredFiles: Record<string, string> = {};
+  let structuredStatus: ParseStatus = 'unsupported';
   if (fullText.includes('<FILES>')) {
-    const { files: structuredFiles, parseError, status } = parseStructuredOutput(fullText);
-    if (status === 'parsed' && structuredFiles && Object.keys(structuredFiles).length > 0) {
-      return {
-        files: structuredFiles,
-        aiExplanation,
-        parseError: false,
-        status: 'parsed',
-        diagnostics: [],
-      };
-    }
-    if (parseError) {
-      return {
-        files: {},
-        aiExplanation,
-        parseError: true,
-        status,
-        diagnostics: ['Malformed or incomplete <FILES> structured block. Rejecting silent malformed conversion.'],
-      };
+    const { files, parseError, status } = parseStructuredOutput(fullText);
+    structuredStatus = status;
+    if (status === 'parsed' && files && Object.keys(files).length > 0) {
+      structuredFiles = files;
+    } else if (parseError) {
+      diagnostics.push('Malformed or incomplete <FILES> structured block.');
     }
   }
 
-  // 3. Fallback to markdown code fences
-  const { files, isComplete, status } = extractStreamingState(fullText);
+  // 3. Extract files from <TOOL_CALL> write_file blocks
+  const toolCallFiles = extractToolCallFiles(fullText);
+
+  // 4. Extract files from markdown code fences
+  const { files: markdownFiles, isComplete, status: mdStatus } = extractStreamingState(fullText);
+
+  // Merge all discovered files (priority: structured > toolCall > markdown)
+  const combinedFiles: Record<string, string> = {
+    ...markdownFiles,
+    ...toolCallFiles,
+    ...structuredFiles,
+  };
 
   // Check for forbidden synthetic filenames during targeted modifications
-  const syntheticFiles = Object.keys(files).filter((p) => p.startsWith('generated/file_'));
+  const syntheticFiles = Object.keys(combinedFiles).filter((p) => p.startsWith('generated/file_'));
   if (forTargeted && syntheticFiles.length > 0) {
     for (const syn of syntheticFiles) {
-      delete files[syn];
+      delete combinedFiles[syn];
     }
     return {
-      files,
+      files: combinedFiles,
       aiExplanation,
       parseError: true,
       status: 'unsupported',
@@ -337,18 +397,24 @@ export function parseFinalOutput(
     };
   }
 
-  if (!isComplete) {
+  const hasFiles = Object.keys(combinedFiles).length > 0;
+  if (!isComplete && !hasFiles) {
     diagnostics.push('AI stream ended with unclosed markdown code fence.');
   }
 
-  const finalStatus: ParseStatus = Object.keys(files).length > 0
-    ? (isComplete ? 'parsed' : 'partial')
-    : 'unsupported';
+  let finalStatus: ParseStatus = 'unsupported';
+  if (hasFiles) {
+    finalStatus = (isComplete || Object.keys(structuredFiles).length > 0 || Object.keys(toolCallFiles).length > 0) ? 'parsed' : 'partial';
+  } else if (structuredStatus === 'malformed') {
+    finalStatus = 'malformed';
+  } else if (structuredStatus === 'partial' || !isComplete) {
+    finalStatus = 'partial';
+  }
 
   return {
-    files,
+    files: combinedFiles,
     aiExplanation,
-    parseError: !isComplete || Object.keys(files).length === 0,
+    parseError: !hasFiles,
     status: finalStatus,
     diagnostics,
   };

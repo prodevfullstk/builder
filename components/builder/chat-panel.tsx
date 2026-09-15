@@ -37,6 +37,7 @@ import { bundleProjectWithEsbuild } from '@/lib/preview/esbuild-compiler';
 import { ExecutionPlanCard, PlanMilestone } from './execution-plan-card';
 import { useCreditsStore, CreditAction } from '@/lib/store/credits-store';
 import { evaluateCandidateChanges } from '@/lib/validation/candidate-pipeline';
+import { ensureFrameworkScaffold } from '@/lib/validation/framework-validator';
 import { parseIntentFromPrompt, MUTATING_INTENT_ACTIONS } from '@/lib/ai/intent-contract';
 import { StreamEventDecoder } from '@/lib/ai/stream-events';
 import { useAuthStore, getClientAuthHeaders } from '@/lib/auth/supabase-auth';
@@ -468,6 +469,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       const sseDecoder = new StreamEventDecoder();
       let accumulatedText = '';
       let accumulatedProse = '';
+      const streamedFiles: Record<string, string> = {};
       let currentSteps: TimelineStep[] = [
         { ...analyzeStep, status: 'completed', label: isFixRequest ? `Diagnosed preview error` : `Analyzed request for ${effectiveFramework.toUpperCase()}` },
       ];
@@ -487,6 +489,8 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
           if (ev.type === 'text_delta' && ev.delta) {
             accumulatedProse += ev.delta;
             setStreamingProse(accumulatedProse);
+          } else if (ev.type === 'file_delta' && ev.path) {
+            streamedFiles[ev.path] = (streamedFiles[ev.path] || '') + ev.delta;
           } else if (ev.type === 'file_read' && ev.path) {
             if (!trackedReadFiles.has(ev.path)) {
               trackedReadFiles.add(ev.path);
@@ -597,8 +601,10 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         }
       }
 
+      const textToParse = accumulatedProse.trim() ? accumulatedProse : accumulatedText;
+
       // ── MCP Tool Execution Layer ──
-      const { toolCalls, explanation: mcpExplanation } = parseToolCalls(accumulatedText);
+      const { toolCalls, explanation: mcpExplanation } = parseToolCalls(textToParse);
       let mcpFiles: Record<string, string> = {};
       const hasToolCalls = toolCalls.length > 0;
       let toolSteps: TimelineStep[] = [];
@@ -618,12 +624,18 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
       }
 
       // ── Standard Parser (FILES block or markdown fences) ──
-      const { files: parsedFiles, aiExplanation, parseError } = parseFinalOutput(accumulatedText);
+      const { files: parsedFiles, aiExplanation, parseError } = parseFinalOutput(textToParse);
 
       // Raw Candidate Workspace
-      const candidateFiles = hasToolCalls
-        ? { ...parsedFiles, ...mcpFiles }
-        : parsedFiles;
+      let candidateFiles = {
+        ...parsedFiles,
+        ...mcpFiles,
+        ...streamedFiles,
+      };
+
+      if (isNewBuild) {
+        candidateFiles = ensureFrameworkScaffold(effectiveFramework, candidateFiles);
+      }
 
       // ── ATOMIC CANDIDATE VALIDATION GATE ──
       addLog(`[Candidate Pipeline] Evaluating candidate changes against ${effectiveFramework.toUpperCase()} contract...`);
