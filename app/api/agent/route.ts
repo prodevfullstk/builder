@@ -8,6 +8,7 @@ import { buildRetrievalContext } from "@/lib/workspace/project-retrieval";
 import { validateImageUpload } from "@/lib/vision/image-hardening";
 import { createVisualSpec } from "@/lib/vision/visual-spec";
 import { createTypedAgentSSEStream } from "@/lib/ai/stream-events";
+import { orchestrateRequest, decideOrchestrationStrategy, trackOrchestrationUsage } from "@/lib/ai/orchestrator";
 
 function getClientIp(req: NextRequest): string {
   const forwarded = req.headers.get('x-forwarded-for');
@@ -216,6 +217,72 @@ Apply the requested changes. Output modified/new files via standard code blocks 
     });
 
     const runId = 'run_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7);
+
+    // === NEW: Orchestration Decision Logic ===
+    // Decide if we should use orchestrated multi-step execution or direct LLM call
+    const orchestrationDecision = decideOrchestrationStrategy(intent);
+    const useOrchestration = orchestrationDecision.strategy === 'orchestrated' && 
+                             process.env.ORCHESTRATION_ENABLED !== 'false'; // Feature flag
+
+    if (useOrchestration) {
+      // Use NEW orchestrated execution path
+      console.log(`[Orchestrator] Using orchestrated strategy for ${intent.action} (${orchestrationDecision.subtaskCount} subtasks)`);
+      
+      const startTime = Date.now();
+      const orchestrationStream = orchestrateRequest({
+        intent,
+        currentFiles: files,
+        framework,
+        dbProvider,
+        authProvider,
+        mode,
+        skills,
+        userPrompt: userContent,
+      });
+
+      // Convert orchestration events to SSE format
+      const encoder = new TextEncoder();
+      const transformedStream = new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const event of orchestrationStream) {
+              const sseData = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+              controller.enqueue(encoder.encode(sseData));
+            }
+            controller.close();
+            
+            // Track usage
+            const duration = Date.now() - startTime;
+            trackOrchestrationUsage('orchestrated', orchestrationDecision.subtaskCount || 0, duration);
+          } catch (error) {
+            console.error('[Orchestrator] Error:', error);
+            const errorEvent = `event: error\ndata: ${JSON.stringify({ type: 'error', message: String(error) })}\n\n`;
+            controller.enqueue(encoder.encode(errorEvent));
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(transformedStream, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          "X-Content-Type-Options": "nosniff",
+          "Connection": "keep-alive",
+          "X-Agent-Mode": mode,
+          "X-Intent-Action": intent.action,
+          "X-Intent-Id": intent.id,
+          "X-Run-Id": runId,
+          "X-Orchestration": "enabled",
+          "X-Subtasks": String(orchestrationDecision.subtaskCount || 0),
+        },
+      });
+    }
+
+    // === EXISTING: Direct LLM stream path (fallback) ===
+    console.log(`[Orchestrator] Using direct strategy for ${intent.action}`);
+    trackOrchestrationUsage('direct', 0, 0);
 
     // Formulate dynamic, prompt-grounded milestones
     const dynamicSteps: string[] = [];
