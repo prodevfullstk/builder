@@ -34,6 +34,7 @@ function BuilderWorkspace() {
     loadProjectState,
     setIsSaved,
     mode,
+    setMode,
     status,
     setStatus,
     addMessage,
@@ -152,6 +153,7 @@ function BuilderWorkspace() {
         }
 
         addMessage({ role: "user", content: initialPrompt, image: initialImage });
+        setMode("preview");
         setStatus("generating", `Building ${targetFramework.toUpperCase()} project...`);
         setIsStreaming(true);
 

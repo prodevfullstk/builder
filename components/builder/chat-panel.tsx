@@ -51,6 +51,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     addMessage,
     updateStreamingMessage,
     mode,
+    setMode,
     status,
     setStatus,
     files,
@@ -173,6 +174,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
     const currentImage = attachedImage;
     setInput('');
     setAttachedImage(null);
+    setMode('preview');
     onGenerateStart?.();
     resetAutoFixAttempts();
     addMessage({
