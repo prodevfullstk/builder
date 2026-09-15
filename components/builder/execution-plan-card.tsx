@@ -29,7 +29,7 @@ export interface PlanMilestone {
   };
 }
 
-interface BoltPlanCardProps {
+interface ExecutionPlanCardProps {
   introText?: string;
   filesInspected?: string[];
   filesRead?: string[];
@@ -39,7 +39,7 @@ interface BoltPlanCardProps {
   isStreaming?: boolean;
 }
 
-export function BoltPlanCard({
+export function ExecutionPlanCard({
   introText,
   filesInspected = [],
   filesRead = [],
@@ -47,7 +47,7 @@ export function BoltPlanCard({
   milestones = [],
   steps = [],
   isStreaming = false,
-}: BoltPlanCardProps) {
+}: ExecutionPlanCardProps) {
   const [isFilesExpanded, setIsFilesExpanded] = useState(false);
   const [isReadFilesExpanded, setIsReadFilesExpanded] = useState(false);
   const { setActiveFile } = useProjectStore();
@@ -127,7 +127,7 @@ export function BoltPlanCard({
 
   return (
     <div className="w-full space-y-3 font-sans text-xs select-none">
-      {/* 1. Bolt.new Brand Identity */}
+      {/* 1. Execution Plan Header */}
       <div className="flex items-center gap-1.5">
         <span className="font-extrabold italic text-sm tracking-tight text-zinc-100">opendork</span>
       </div>

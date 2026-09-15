@@ -222,8 +222,8 @@ export default function HomePage() {
             From idea to launch in seconds.
           </p>
 
-          {/* ── Interactive Floating Prompt Box (v0 + Bolt style) ── */}
-          {/* ── Ultra-Premium AI Chatbox (Perplexity / v0 / Bolt Style) ── */}
+          {/* ── Interactive Floating Prompt Box ── */}
+          {/* ── AI Workspace Prompt Box ── */}
           <div className="max-w-3xl mx-auto mb-8 relative group">
             {/* Ambient Animated Gradient Border Glow */}
             <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-blue-600 via-indigo-500 to-purple-600 opacity-30 group-hover:opacity-60 group-focus-within:opacity-100 blur-xl transition-all duration-500 pointer-events-none" />
@@ -357,7 +357,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* ── 2. RECENTLY VIEWED PROJECTS (Bolt.new Image 2 style) ── */}
+          {/* ── 2. RECENTLY VIEWED PROJECTS ── */}
           <section id="recent-projects" className="w-full max-w-4xl mx-auto text-left mb-20">
             <div className="flex items-center justify-between mb-4 px-1">
               <div className="flex items-center gap-2">

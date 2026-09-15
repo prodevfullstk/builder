@@ -16,7 +16,7 @@ import {
 import { TimelineStep, useProjectStore } from '@/lib/store/project-store';
 import { generateInstantPreviewHtml } from '@/lib/preview/instant-preview-html';
 
-interface V0StepperProps {
+interface TimelineStepperProps {
   steps: TimelineStep[];
   filesGenerated?: string[];
   showPreview?: boolean;
@@ -24,13 +24,13 @@ interface V0StepperProps {
   isStreaming?: boolean;
 }
 
-export function V0Stepper({
+export function TimelineStepper({
   steps,
   filesGenerated = [],
   showPreview = true,
   content = '',
   isStreaming = false,
-}: V0StepperProps) {
+}: TimelineStepperProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const { files, setMode, setActiveFile } = useProjectStore();
 
@@ -71,7 +71,7 @@ export function V0Stepper({
 
   return (
     <div className="space-y-2.5 text-xs">
-      {/* 1. Preliminary Thinking & Design Steps (Standalone outside card, like v0) */}
+      {/* 1. Preliminary Thinking & Design Steps */}
       {preliminarySteps.length > 0 && (
         <div className="space-y-1.5 px-0.5 pt-0.5">
           {preliminarySteps.map((step) => (
@@ -164,7 +164,7 @@ export function V0Stepper({
         </div>
       )}
 
-      {/* 3. Checked Preview Step (Outside card, like v0) */}
+      {/* 3. Checked Preview Step */}
       {previewSteps.map((step) => (
         <div
           key={step.id}
@@ -175,7 +175,7 @@ export function V0Stepper({
         </div>
       ))}
 
-      {/* 4. Inline Miniature Preview Card (v0-style) */}
+      {/* 4. Inline Miniature Preview Card */}
       {showPreview && !isStreaming && previewHtml && (
         <div className="rounded-xl border border-zinc-800 overflow-hidden bg-zinc-950 shadow-lg group">
           {/* Card Header Bar */}

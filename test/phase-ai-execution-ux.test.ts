@@ -30,7 +30,7 @@ describe('Phase AI Execution UX, Streaming, Plan & Workspace Visibility Contract
       );
       assert.ok(
         chatPanelSrc.includes('introText={') && chatPanelSrc.includes('streamingProse'),
-        'BoltPlanCard must receive live streamingProse as introText'
+        'ExecutionPlanCard must receive live streamingProse as introText'
       );
     });
 
@@ -159,14 +159,14 @@ describe('Phase AI Execution UX, Streaming, Plan & Workspace Visibility Contract
       assert.strictEqual(planEvent.milestones[0].title, 'Design layout system');
     });
 
-    it('verifies bolt-plan-card.tsx eliminates cosmetic dependency green claims', () => {
+    it('verifies execution-plan-card.tsx eliminates cosmetic dependency green claims', () => {
       const cardSrc = fs.readFileSync(
-        path.join(process.cwd(), 'components/builder/bolt-plan-card.tsx'),
+        path.join(process.cwd(), 'components/builder/execution-plan-card.tsx'),
         'utf-8'
       );
       assert.ok(
         !cardSrc.includes("id: 'milestone-deps'"),
-        'bolt-plan-card.tsx must not contain hardcoded milestone-deps that auto-completes'
+        'execution-plan-card.tsx must not contain hardcoded milestone-deps that auto-completes'
       );
     });
 
@@ -204,7 +204,7 @@ describe('Phase AI Execution UX, Streaming, Plan & Workspace Visibility Contract
   describe('P1-7 & P1-8: PlanMilestone Failed & Cancelled Status Representation', () => {
     it('verifies PlanMilestone interface supports failed and cancelled', () => {
       const cardSrc = fs.readFileSync(
-        path.join(process.cwd(), 'components/builder/bolt-plan-card.tsx'),
+        path.join(process.cwd(), 'components/builder/execution-plan-card.tsx'),
         'utf-8'
       );
       assert.ok(
@@ -213,21 +213,21 @@ describe('Phase AI Execution UX, Streaming, Plan & Workspace Visibility Contract
       );
     });
 
-    it('verifies bolt-plan-card.tsx renders XCircle and diagnostic message for failed status', () => {
+    it('verifies execution-plan-card.tsx renders XCircle and diagnostic message for failed status', () => {
       const cardSrc = fs.readFileSync(
-        path.join(process.cwd(), 'components/builder/bolt-plan-card.tsx'),
+        path.join(process.cwd(), 'components/builder/execution-plan-card.tsx'),
         'utf-8'
       );
-      assert.ok(cardSrc.includes('XCircle'), 'bolt-plan-card.tsx must render XCircle for failed milestone');
-      assert.ok(cardSrc.includes('milestone.error'), 'bolt-plan-card.tsx must display milestone.error');
+      assert.ok(cardSrc.includes('XCircle'), 'execution-plan-card.tsx must render XCircle for failed milestone');
+      assert.ok(cardSrc.includes('milestone.error'), 'execution-plan-card.tsx must display milestone.error');
     });
 
-    it('verifies bolt-plan-card.tsx renders MinusCircle for cancelled status', () => {
+    it('verifies execution-plan-card.tsx renders MinusCircle for cancelled status', () => {
       const cardSrc = fs.readFileSync(
-        path.join(process.cwd(), 'components/builder/bolt-plan-card.tsx'),
+        path.join(process.cwd(), 'components/builder/execution-plan-card.tsx'),
         'utf-8'
       );
-      assert.ok(cardSrc.includes('MinusCircle'), 'bolt-plan-card.tsx must render MinusCircle for cancelled milestone');
+      assert.ok(cardSrc.includes('MinusCircle'), 'execution-plan-card.tsx must render MinusCircle for cancelled milestone');
     });
   });
 
@@ -304,18 +304,18 @@ describe('Phase AI Execution UX, Streaming, Plan & Workspace Visibility Contract
       assert.strictEqual(fileReads[0].reason, 'Direct navigation component');
     });
 
-    it('verifies bolt-plan-card.tsx renders separate drawers for files read and files updated', () => {
+    it('verifies execution-plan-card.tsx renders separate drawers for files read and files updated', () => {
       const cardSrc = fs.readFileSync(
-        path.join(process.cwd(), 'components/builder/bolt-plan-card.tsx'),
+        path.join(process.cwd(), 'components/builder/execution-plan-card.tsx'),
         'utf-8'
       );
       assert.ok(
         cardSrc.includes('files read for context'),
-        'bolt-plan-card.tsx must display context files read drawer'
+        'execution-plan-card.tsx must display context files read drawer'
       );
       assert.ok(
         cardSrc.includes('files updated'),
-        'bolt-plan-card.tsx must display files updated drawer'
+        'execution-plan-card.tsx must display files updated drawer'
       );
     });
   });

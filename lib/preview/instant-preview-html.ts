@@ -1,7 +1,7 @@
 /**
  * Instant Preview HTML Generator
- * Inspired by llamacoder - compiles multi-file React/Next.js/Vite projects
- * in-browser in < 500ms using Babel standalone, Tailwind CDN, and esm.sh
+ * Fast in-browser React/Next.js/Vite compilation engine
+ * Compiles multi-file workspaces using Babel standalone, Tailwind CDN, and esm.sh
  */
 
 export function generateInstantPreviewHtml(files: Record<string, string>): string {

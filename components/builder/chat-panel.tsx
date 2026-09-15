@@ -34,9 +34,7 @@ import { useProjectStore, TimelineStep } from '@/lib/store/project-store';
 import { extractStreamingState, parseFinalOutput } from '@/lib/ai/code-parser';
 import { parseToolCalls, executeToolCalls } from '@/lib/ai/mcp-executor';
 import { bundleProjectWithEsbuild } from '@/lib/preview/esbuild-compiler';
-import { SUGGESTED_PROMPTS } from '@/lib/ai/prompt-templates';
-import { V0Stepper } from './v0-stepper';
-import { BoltPlanCard, PlanMilestone } from './bolt-plan-card';
+import { ExecutionPlanCard, PlanMilestone } from './execution-plan-card';
 import { useCreditsStore, CreditAction } from '@/lib/store/credits-store';
 import { evaluateCandidateChanges } from '@/lib/validation/candidate-pipeline';
 import { parseIntentFromPrompt, MUTATING_INTENT_ACTIONS } from '@/lib/ai/intent-contract';
@@ -972,7 +970,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
             ) : (
               <div className="w-full">
                 {msg.steps && msg.steps.length > 0 ? (
-                  <BoltPlanCard
+                  <ExecutionPlanCard
                     introText={msg.content}
                     steps={msg.steps}
                     filesInspected={msg.filesGenerated}
@@ -996,7 +994,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
         {/* Live Stepper when AI is actively generating */}
         {status === 'generating' && (
           <div className="w-full text-xs">
-            <BoltPlanCard
+            <ExecutionPlanCard
               introText={
                 streamingProse ||
                 (runtimeError

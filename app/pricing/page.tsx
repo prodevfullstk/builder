@@ -54,7 +54,7 @@ const PRICING_PLANS: PricingPlan[] = [
       '100 initial AI starter credits included',
       '+15 daily bonus credits (claim every 24h)',
       'Dual-provider inference (Gemini + Groq 120B)',
-      'Bolt-style real-time plan stepper & streaming',
+      'Real-time execution plan stepper & streaming',
       'In-browser instant preview & Babel transpilation',
       'Next.js 15, Vite React, Astro & Node.js frameworks',
       'One-click ZIP project export',
