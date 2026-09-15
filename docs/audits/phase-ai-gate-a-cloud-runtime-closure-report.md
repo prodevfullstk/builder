@@ -4,8 +4,10 @@
 **Project:** `opendorkweb`  
 **Authoritative Standard:** Evidence-First, Zero-Assumption Empirical Cloud Verification  
 **Requirements Document:** `docs/requirements/phase-ai-gate-a-cloud-runtime-closure.md`  
-**Certified Tested Baseline:** `643ca052c2c77efdee157babfc046e6fd0848685`  
-**origin/main Baseline:** `643ca052c2c77efdee157babfc046e6fd0848685`  
+**Base Lineage SHA:** `6f05dcbcea86f98a4b4aef6d5e1effad588c308b`  
+**Implementation SHA:** `643ca052c2c77efdee157babfc046e6fd0848685`  
+**Final Tested SHA:** `6bd831dd55720a14921ffa92c708333edc133b7b`  
+**origin/main SHA:** `6bd831dd55720a14921ffa92c708333edc133b7b`  
 **SHA MATCH:** `PASS`  
 **Working Tree:** `CLEAN`  
 
