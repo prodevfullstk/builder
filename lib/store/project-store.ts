@@ -134,14 +134,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   runtimeError: null,
   autoFixAttempts: 0,
   createFileRequest: 0,
-  messages: [
-    {
-      id: 'init-1',
-      role: 'assistant',
-      content: 'Hello! I am Opendork. Describe any website, web app, or feature you would like to build.',
-      timestamp: Date.now(),
-    },
-  ],
+  messages: [],
   activeSteps: [],
   logs: ['[System] Workspace ready.'],
 

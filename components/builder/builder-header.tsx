@@ -25,7 +25,6 @@ import {
 } from '@/lib/storage/project-storage';
 import { ProjectsModal } from './projects-modal';
 import { GitHubPushModal } from './github-push-modal';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { UserMenu } from '@/components/auth/user-menu';
 
@@ -159,36 +158,6 @@ export function BuilderHeader() {
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
               )}
             </span>
-          </div>
-
-          {/* Status indicator */}
-          <div className="flex items-center gap-2 ml-1">
-            <Badge
-              variant={
-                status === 'ready'
-                  ? 'default'
-                  : status === 'generating' || status === 'starting'
-                  ? 'secondary'
-                  : status === 'error'
-                  ? 'destructive'
-                  : 'outline'
-              }
-              className="text-[11px] font-mono capitalize py-0.5 px-2"
-            >
-              {status === 'generating' ? (
-                <span className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
-                  Generating Code...
-                </span>
-              ) : status === 'starting' ? (
-                <span className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                  Booting Preview...
-                </span>
-              ) : (
-                status
-              )}
-            </Badge>
           </div>
         </div>
 

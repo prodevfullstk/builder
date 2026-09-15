@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   Loader2,
   Cloud,
+  Eye,
 } from 'lucide-react';
 import { useProjectStore } from '@/lib/store/project-store';
 import { InstantPreview } from '@/components/preview/instant-preview';
@@ -414,7 +415,19 @@ export function PreviewPane() {
           style={{ width: getViewportWidth() }}
           className="h-full bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl overflow-hidden transition-all duration-300 flex flex-col"
         >
-          {engine === 'vercel' ? (
+          {Object.keys(files).length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 gap-3 p-6 text-center select-none bg-zinc-950">
+              <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 shadow-inner">
+                <Eye className="w-6 h-6 text-zinc-500" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-zinc-300">Live Preview</p>
+                <p className="text-xs text-zinc-500 max-w-xs leading-relaxed">
+                  Enter a prompt in the chat to start generating and building your application.
+                </p>
+              </div>
+            </div>
+          ) : engine === 'vercel' ? (
             <VercelPreview
               key={`vercel-${previewKey}`}
               files={files}

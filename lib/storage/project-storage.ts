@@ -156,14 +156,7 @@ export function createNewProjectObject(name = "Untitled Project", framework: Fra
     dbProvider: "none",
     authProvider: "none",
     files: {},
-    messages: [
-      {
-        id: "init-1",
-        role: "assistant",
-        content: `Hello! I am Opendork. Describe any ${framework.toUpperCase()} website or app you would like to build.`,
-        timestamp: now,
-      },
-    ],
+    messages: [],
     createdAt: now,
     updatedAt: now,
   };
