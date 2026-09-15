@@ -14,6 +14,8 @@ export interface AuthUser {
 export interface AuthState {
   user: AuthUser | null;
   accessToken: string | null;
+  refreshToken: string | null;
+  expiresAt: number | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   isAuthModalOpen: boolean;
@@ -28,7 +30,14 @@ export interface AuthState {
   loginWithEmail: (email: string) => Promise<{ success: boolean; error?: string }>;
   verifyOtp: (email: string, token: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
-  setSession: (user: AuthUser, accessToken: string) => void;
+  handleAuthExpired: (reason?: string) => void;
+  refreshSession: () => Promise<boolean>;
+  setSession: (
+    user: AuthUser,
+    accessToken: string,
+    refreshToken?: string | null,
+    expiresAt?: number | null
+  ) => void;
 }
 
 const DEFAULT_SUPABASE_URL = 'https://gmstovafjvsmsscfynqh.supabase.co';
@@ -74,6 +83,16 @@ export const supabaseAuthHelper = {
       }),
     });
   },
+  refreshSession: async (refreshToken: string) => {
+    return fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+  },
   saveProject: async (
     accessToken: string,
     userId: string,
@@ -110,6 +129,8 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       accessToken: null,
+      refreshToken: null,
+      expiresAt: null,
       isAuthenticated: false,
       isLoading: false,
       isAuthModalOpen: false,
@@ -183,6 +204,9 @@ export const useAuthStore = create<AuthState>()(
           const data = await res.json();
           const sessionUser = data.user;
           const accessToken = data.access_token;
+          const refreshToken = data.refresh_token || null;
+          const expiresIn = data.expires_in || 3600;
+          const expiresAt = Date.now() + expiresIn * 1000;
 
           const authUser: AuthUser = {
             id: sessionUser.id,
@@ -197,6 +221,8 @@ export const useAuthStore = create<AuthState>()(
           set({
             user: authUser,
             accessToken,
+            refreshToken,
+            expiresAt,
             isAuthenticated: true,
             isAuthModalOpen: false,
             isLoading: false,
@@ -212,20 +238,81 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      setSession: (user: AuthUser, accessToken: string) => {
-        set({
+      setSession: (
+        user: AuthUser,
+        accessToken: string,
+        refreshToken?: string | null,
+        expiresAt?: number | null
+      ) => {
+        set((state) => ({
           user,
           accessToken,
+          refreshToken: refreshToken !== undefined ? refreshToken : state.refreshToken,
+          expiresAt: expiresAt !== undefined ? expiresAt : state.expiresAt,
           isAuthenticated: true,
           isLoading: false,
           authError: null,
+        }));
+      },
+
+      handleAuthExpired: (reason?: string) => {
+        set({
+          user: null,
+          accessToken: null,
+          refreshToken: null,
+          expiresAt: null,
+          isAuthenticated: false,
+          isLoading: false,
+          isAuthModalOpen: true,
+          authError: reason || 'Your session has expired. Please sign in to continue.',
         });
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.removeItem('opendork_auth_session');
+          } catch {}
+        }
+      },
+
+      refreshSession: async () => {
+        const state = get();
+        if (!state.refreshToken) {
+          return false;
+        }
+
+        try {
+          const res = await supabaseAuthHelper.refreshSession(state.refreshToken);
+          if (!res.ok) {
+            get().handleAuthExpired('Session expired. Please sign in again.');
+            return false;
+          }
+
+          const data = await res.json();
+          if (!data.access_token) {
+            get().handleAuthExpired('Session expired. Please sign in again.');
+            return false;
+          }
+
+          const expiresAt = Date.now() + (data.expires_in || 3600) * 1000;
+          set({
+            accessToken: data.access_token,
+            refreshToken: data.refresh_token || state.refreshToken,
+            expiresAt,
+            isAuthenticated: true,
+            authError: null,
+          });
+          return true;
+        } catch (err) {
+          console.warn('[Auth] Failed to refresh session:', err);
+          return false;
+        }
       },
 
       logout: async () => {
         set({
           user: null,
           accessToken: null,
+          refreshToken: null,
+          expiresAt: null,
           isAuthenticated: false,
           isAuthModalOpen: false,
           otpSent: false,
@@ -243,6 +330,8 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         user: state.user,
         accessToken: state.accessToken,
+        refreshToken: state.refreshToken,
+        expiresAt: state.expiresAt,
         isAuthenticated: state.isAuthenticated,
       }),
       onRehydrateStorage: () => (state) => {
@@ -257,6 +346,8 @@ export const useAuthStore = create<AuthState>()(
           ) {
             state.user = null;
             state.accessToken = null;
+            state.refreshToken = null;
+            state.expiresAt = null;
             state.isAuthenticated = false;
             if (typeof window !== 'undefined') {
               try {
@@ -286,33 +377,51 @@ export function initAuthFromUrlHash(): void {
     if (hash && hash.includes('access_token=')) {
       const params = new URLSearchParams(hash.replace(/^#/, ''));
       const accessToken = params.get('access_token');
+      const refreshToken = params.get('refresh_token');
+      const expiresIn = parseInt(params.get('expires_in') || '3600', 10);
+      const expiresAt = Date.now() + expiresIn * 1000;
       const provider = (params.get('provider') as any) || 'google';
 
-      if (accessToken && SUPABASE_URL && SUPABASE_ANON_KEY) {
-        fetch(`${SUPABASE_URL}/auth/v1/user`, {
-          headers: {
-            apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${accessToken}`,
-          },
-        })
-          .then((res) => (res.ok ? res.json() : null))
-          .then((userData) => {
-            if (userData && userData.id) {
-              const authUser: AuthUser = {
-                id: userData.id,
-                email: userData.email || '',
-                name: userData.user_metadata?.full_name || userData.user_metadata?.name || userData.email?.split('@')[0] || 'User',
-                avatar_url: userData.user_metadata?.avatar_url || userData.user_metadata?.picture,
-                provider: (userData.app_metadata?.provider as any) || provider || 'google',
-                authMode: 'real',
-                created_at: userData.created_at || new Date().toISOString(),
-              };
-              useAuthStore.getState().setSession(authUser, accessToken);
+      if (accessToken) {
+        // Set session immediately with token so API calls immediately succeed
+        const tempUser: AuthUser = {
+          id: 'auth-user',
+          email: '',
+          name: 'User',
+          provider,
+          authMode: 'real',
+          created_at: new Date().toISOString(),
+        };
+        useAuthStore.getState().setSession(tempUser, accessToken, refreshToken, expiresAt);
+
+        if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+          fetch(`${SUPABASE_URL}/auth/v1/user`, {
+            headers: {
+              apikey: SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${accessToken}`,
+            },
+          })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((userData) => {
+              if (userData && userData.id) {
+                const authUser: AuthUser = {
+                  id: userData.id,
+                  email: userData.email || '',
+                  name: userData.user_metadata?.full_name || userData.user_metadata?.name || userData.email?.split('@')[0] || 'User',
+                  avatar_url: userData.user_metadata?.avatar_url || userData.user_metadata?.picture,
+                  provider: (userData.app_metadata?.provider as any) || provider || 'google',
+                  authMode: 'real',
+                  created_at: userData.created_at || new Date().toISOString(),
+                };
+                useAuthStore.getState().setSession(authUser, accessToken, refreshToken, expiresAt);
+              }
+            })
+            .catch((err) => console.warn('[Auth] Failed to initialize session from URL hash:', err))
+            .finally(() => {
               // Clean hash from URL bar
               window.history.replaceState(null, '', window.location.pathname + window.location.search);
-            }
-          })
-          .catch((err) => console.warn('[Auth] Failed to initialize session from URL hash:', err));
+            });
+        }
       }
     }
   } catch (err) {

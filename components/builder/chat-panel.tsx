@@ -273,7 +273,18 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
             mode: 'chat',
           }),
         });
-        if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok || !response.body) {
+          if (response.status === 401) {
+            useAuthStore.getState().handleAuthExpired('Session expired. Please sign in again.');
+            addMessage({
+              role: 'assistant',
+              content: '🔒 আপনার সাইন-ইন সেশনের মেয়াদ শেষ হয়েছে বা সাইন-ইন প্রয়োজন। দয়া করে আপনার অ্যাকাউন্ট দিয়ে সাইন-ইন করুন।',
+            });
+            setStatus('idle');
+            return;
+          }
+          throw new Error(`HTTP ${response.status}`);
+        }
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         const sseDecoder = new StreamEventDecoder();
@@ -434,10 +445,22 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
           dbProvider: effectiveDbProvider,
           authProvider: effectiveAuthProvider,
           mode: effectiveMode,
-        }),
       });
 
-      if (!response.ok || !response.body) throw new Error(`HTTP error ${response.status}`);
+      if (!response.ok || !response.body) {
+        if (response.status === 401) {
+          useAuthStore.getState().handleAuthExpired('Session expired. Please sign in again.');
+          addMessage({
+            role: 'assistant',
+            content: '🔒 আপনার সাইন-ইন সেশনের মেয়াদ শেষ হয়েছে বা সাইন-ইন প্রয়োজন। দয়া করে আপনার অ্যাকাউন্ট দিয়ে সাইন-ইন করুন।',
+          });
+          setIsStreaming(false);
+          setStreamingFile(null);
+          setStatus('idle');
+          return;
+        }
+        throw new Error(`HTTP error ${response.status}`);
+      }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
