@@ -23,7 +23,7 @@ import { useCreditsStore } from "@/lib/store/credits-store";
 import { evaluateCandidateChanges } from "@/lib/validation/candidate-pipeline";
 import { synthesizeProjectRequirements } from "@/lib/ai/requirements-generator";
 import { AuthModal } from "@/components/auth/auth-modal";
-import { useAuthStore, getClientAuthHeaders } from "@/lib/auth/supabase-auth";
+import { useAuthStore, getClientAuthHeaders, initAuthFromUrlHash } from "@/lib/auth/supabase-auth";
 
 function BuilderWorkspace() {
   const {
@@ -58,6 +58,7 @@ function BuilderWorkspace() {
 
   // 1. Initial Project Loading & URL Sync
   useEffect(() => {
+    initAuthFromUrlHash();
     if (hasInitialized.current) return;
     hasInitialized.current = true;
 

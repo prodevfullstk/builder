@@ -28,7 +28,7 @@ import { Framework } from '@/lib/store/project-store';
 import { CreditsModal } from '@/components/credits/credits-modal';
 import { UserMenu } from '@/components/auth/user-menu';
 import { AuthModal } from '@/components/auth/auth-modal';
-import { useAuthStore } from '@/lib/auth/supabase-auth';
+import { useAuthStore, initAuthFromUrlHash } from '@/lib/auth/supabase-auth';
 
 const QUICK_CATEGORIES = [
   {
@@ -72,8 +72,9 @@ export default function HomePage() {
   const [recentProjects, setRecentProjects] = useState<SavedProjectSummary[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Load saved projects on client mount
+  // Load saved projects on client mount and check OAuth tokens
   useEffect(() => {
+    initAuthFromUrlHash();
     setRecentProjects(listSavedProjects());
   }, []);
 

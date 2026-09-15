@@ -266,14 +266,58 @@ export const useAuthStore = create<AuthState>()(
   )
 );
 
-// Immediate startup check in browser to clean legacy demo sessions
-if (typeof window !== 'undefined') {
+// Immediate startup check in browser to clean legacy demo sessions and extract OAuth callback tokens
+export function initAuthFromUrlHash(): void {
+  if (typeof window === 'undefined') return;
+
   try {
+    // 1. Clean legacy demo tokens
     const raw = localStorage.getItem('opendork_auth_session');
     if (raw && (raw.includes('"demo-user"') || raw.includes('"authMode":"demo"') || raw.includes('"provider":"demo"'))) {
       localStorage.removeItem('opendork_auth_session');
     }
-  } catch {}
+
+    // 2. Parse OAuth callback tokens from URL hash (#access_token=...)
+    const hash = window.location.hash;
+    if (hash && hash.includes('access_token=')) {
+      const params = new URLSearchParams(hash.replace(/^#/, ''));
+      const accessToken = params.get('access_token');
+      const provider = (params.get('provider') as any) || 'google';
+
+      if (accessToken && SUPABASE_URL && SUPABASE_ANON_KEY) {
+        fetch(`${SUPABASE_URL}/auth/v1/user`, {
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${accessToken}`,
+          },
+        })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((userData) => {
+            if (userData && userData.id) {
+              const authUser: AuthUser = {
+                id: userData.id,
+                email: userData.email || '',
+                name: userData.user_metadata?.full_name || userData.user_metadata?.name || userData.email?.split('@')[0] || 'User',
+                avatar_url: userData.user_metadata?.avatar_url || userData.user_metadata?.picture,
+                provider: (userData.app_metadata?.provider as any) || provider || 'google',
+                authMode: 'real',
+                created_at: userData.created_at || new Date().toISOString(),
+              };
+              useAuthStore.getState().setSession(authUser, accessToken);
+              // Clean hash from URL bar
+              window.history.replaceState(null, '', window.location.pathname + window.location.search);
+            }
+          })
+          .catch((err) => console.warn('[Auth] Failed to initialize session from URL hash:', err));
+      }
+    }
+  } catch (err) {
+    console.warn('[Auth] Error initializing auth:', err);
+  }
+}
+
+if (typeof window !== 'undefined') {
+  initAuthFromUrlHash();
 }
 
 /**
