@@ -445,6 +445,7 @@ export function ChatPanel({ onGenerateStart }: ChatPanelProps) {
           dbProvider: effectiveDbProvider,
           authProvider: effectiveAuthProvider,
           mode: effectiveMode,
+        }),
       });
 
       if (!response.ok || !response.body) {
