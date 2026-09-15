@@ -352,6 +352,7 @@ export class VercelSandboxRunner implements BuildRunner {
       teamId: process.env.VERCEL_TEAM_ID,
       timeout: 180_000,
       ports: [3000, 3001, 4173, 5173],
+      persistent: false,
     });
 
     // Write all project files into the remote sandbox filesystem
@@ -477,7 +478,7 @@ export class VercelSandboxRunner implements BuildRunner {
     }
 
     const cmd = await this.sandboxInstance.runCommand({
-      command: startCmd,
+      cmd: startCmd,
       args: startArgs,
       detached: true,
     });
@@ -538,8 +539,16 @@ export class VercelSandboxRunner implements BuildRunner {
   async cleanup(): Promise<void> {
     if (this.sandboxInstance) {
       try {
-        await this.sandboxInstance.stop();
-      } catch {}
+        if (typeof this.sandboxInstance.delete === 'function') {
+          await this.sandboxInstance.delete({ deleteOrphanSnapshots: true });
+        } else {
+          await this.sandboxInstance.stop();
+        }
+      } catch {
+        try {
+          await this.sandboxInstance.stop();
+        } catch {}
+      }
       this.sandboxInstance = null;
     }
   }
