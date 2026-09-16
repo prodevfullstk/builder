@@ -288,28 +288,31 @@ Apply the requested changes. Output modified/new files via standard code blocks 
               // Transform orchestration events to standard stream events
               if (orchEvent.type === 'orchestration_start') {
                 // Emit plan event with orchestration info
+                const rawSubtasks = orchEvent.data?.plan?.subtasks;
+                const subtasks = Array.isArray(rawSubtasks) ? rawSubtasks : [];
                 const planEvent = {
                   type: 'plan',
                   sequenceId: ++sequenceId,
                   timestamp: new Date().toISOString(),
-                  steps: orchEvent.data?.plan?.subtasks?.map((s: any) => s.description || s) || ['Planning multi-step execution'],
-                  milestones: orchEvent.data?.plan?.subtasks?.map((s: any, idx: number) => ({
-                    id: `milestone-${idx + 1}`,
+                  steps: subtasks.length > 0 ? subtasks.map((s: any) => s.description || s) : ['Planning multi-step execution'],
+                  milestones: subtasks.map((s: any, idx: number) => ({
+                    id: s.id || `milestone-${idx + 1}`,
                     title: s.description || s,
                     status: 'pending',
-                  })) || [],
-                  estimatedFiles: orchEvent.data?.plan?.targetFiles || [],
+                  })),
+                  estimatedFiles: orchEvent.data?.plan?.targetFiles || subtasks.flatMap((s: any) => s.targetFiles || []),
                 };
                 controller.enqueue(encoder.encode(`event: plan\ndata: ${JSON.stringify(planEvent)}\n\n`));
                 planEmitted = true;
               } else if (orchEvent.type === 'plan_generated' && !planEmitted) {
                 // Emit plan event from plan_generated
-                const subtasks = orchEvent.data?.plan?.subtasks || [];
+                const rawSubtasks = orchEvent.data?.plan?.subtasks;
+                const subtasks = Array.isArray(rawSubtasks) ? rawSubtasks : [];
                 const planEvent = {
                   type: 'plan',
                   sequenceId: ++sequenceId,
                   timestamp: new Date().toISOString(),
-                  steps: subtasks.map((s: any) => s.description || 'Execute subtask'),
+                  steps: subtasks.length > 0 ? subtasks.map((s: any) => s.description || 'Execute subtask') : ['Execute subtask'],
                   milestones: subtasks.map((s: any, idx: number) => ({
                     id: s.id || `milestone-${idx + 1}`,
                     title: s.description,

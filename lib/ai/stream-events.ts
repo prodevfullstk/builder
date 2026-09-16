@@ -249,8 +249,12 @@ export class StreamEventDecoder {
           if (eventType && !parsed.type) {
             parsed.type = eventType as StreamEventType;
           }
-          if (parsed.sequenceId > this.lastSequenceId || parsed.sequenceId === 0) {
-            this.lastSequenceId = parsed.sequenceId;
+          if (typeof parsed.sequenceId === 'number') {
+            if (parsed.sequenceId > this.lastSequenceId || parsed.sequenceId === 0) {
+              this.lastSequenceId = parsed.sequenceId;
+              events.push(parsed as StreamEvent);
+            }
+          } else {
             events.push(parsed as StreamEvent);
           }
         } catch (err: any) {

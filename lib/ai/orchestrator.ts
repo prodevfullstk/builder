@@ -87,7 +87,14 @@ export async function* executeOrchestrated(
       strategy: 'orchestrated',
       plan: {
         id: plan.id,
-        subtasks: plan.subtasks.length,
+        subtasks: plan.subtasks.map(t => ({
+          id: t.id,
+          description: t.description,
+          type: t.type,
+          targetFiles: t.targetFiles,
+          priority: t.priority,
+        })),
+        subtaskCount: plan.subtasks.length,
         parallelGroups: plan.parallelGroups.length,
         complexity: plan.metadata.complexity,
         estimatedDuration: plan.estimatedDuration,

@@ -96,6 +96,7 @@ export async function* coordinateExecution(
           data: {
             subtaskId: result.subtaskId,
             success: true,
+            files: result.files,
             filesModified: Object.keys(result.files).length,
             durationMs: result.durationMs,
           },
