@@ -223,7 +223,17 @@ Apply the requested changes. Output modified/new files via standard code blocks 
     // Decide if we should use orchestrated multi-step execution or direct LLM call
     const orchestrationDecision = decideOrchestrationStrategy(intent);
     const useOrchestration = orchestrationDecision.strategy === 'orchestrated' && 
-                             process.env.ORCHESTRATION_ENABLED !== 'false'; // Feature flag
+                             process.env.ORCHESTRATION_ENABLED !== 'false'; // Feature flag (default: enabled)
+    
+    // TELEMETRY: Log orchestration decision for monitoring
+    console.log(`[🧠 Brain Decision] Intent: ${intent.action}, Strategy: ${orchestrationDecision.strategy}, Subtasks: ${orchestrationDecision.subtaskCount || 0}, Enabled: ${useOrchestration}`);
+    
+    if (useOrchestration) {
+      console.log('[🧠 Brain Active] Using multi-step orchestrated execution with intelligent task planning');
+      console.log(`[🧠 Brain Plan] Breaking task into ${orchestrationDecision.subtaskCount} subtasks`);
+    } else {
+      console.log('[⚡ Brain Bypassed] Falling back to direct LLM call (simple mode)');
+    }
 
     if (useOrchestration) {
       // Use NEW orchestrated execution path
@@ -282,7 +292,7 @@ Apply the requested changes. Output modified/new files via standard code blocks 
     }
 
     // === EXISTING: Direct LLM stream path (fallback) ===
-    console.log(`[Orchestrator] Using direct strategy for ${intent.action}`);
+    console.log(`[⚡ Direct Mode] Using direct strategy for ${intent.action} (orchestration not beneficial)`);
     trackOrchestrationUsage('direct', 0, 0);
 
     // Formulate dynamic, prompt-grounded milestones

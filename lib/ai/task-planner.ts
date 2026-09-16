@@ -482,24 +482,29 @@ function computeParallelGroups(subtasks: ExecutionSubtask[]): string[][] {
 
 /**
  * Utility: Check if intent needs orchestration
+ * UPDATED: More aggressive orchestration thresholds for better "brain" activation
  */
 export function shouldOrchestrate(intent: IntentContract): boolean {
-  // Always orchestrate project creation
+  // ALWAYS orchestrate project creation (no file count threshold)
   if (intent.action === 'CREATE_PROJECT') {
-    const estimatedFiles = estimateFileCount(intent);
-    return estimatedFiles >= 5;
+    return true; // CHANGED: Was estimatedFiles >= 5, now always true
   }
   
-  // Orchestrate complex features
+  // Orchestrate complex features (lowered threshold)
   if (intent.action === 'ADD_FEATURE' || intent.action === 'REFACTOR') {
-    return intent.requirements.length >= 3;
+    return intent.requirements.length >= 2; // CHANGED: Was 3, now 2
   }
   
-  // Don't orchestrate simple edits
-  if (intent.action === 'MODIFY_FEATURE' || intent.action === 'FIX_BUG') {
-    return false;
+  // NEW: Orchestrate multi-file edits
+  if (intent.action === 'MODIFY_FEATURE' && intent.targetFiles && intent.targetFiles.length >= 3) {
+    return true; // CHANGED: Was false, now true for 3+ file edits
   }
   
-  // Default: no orchestration for simple tasks
+  // NEW: Orchestrate complex bug fixes
+  if (intent.action === 'FIX_BUG' && intent.requirements.length >= 2) {
+    return true; // CHANGED: Was false, now true for complex bugs
+  }
+  
+  // Don't orchestrate simple single-file edits or simple bugs
   return false;
 }
