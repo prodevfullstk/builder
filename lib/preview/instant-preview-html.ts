@@ -73,13 +73,42 @@ export function generateInstantPreviewHtml(files: Record<string, string>, curren
   <title>Instant Preview</title>
   
   <script>
-    // Graceful image fallback for broken or placeholder avatar URLs
+    // Early error trap to catch script syntax/loading errors and dismiss spinner
     window.addEventListener('error', function(e) {
       if (e.target && e.target.tagName === 'IMG') {
         e.target.onerror = null;
         e.target.src = 'https://api.dicebear.com/7.x/avataaars/svg?seed=GamifiedUser';
+        return;
       }
+      var spinner = document.getElementById('loading-spinner');
+      if (spinner) spinner.style.display = 'none';
+      var container = document.getElementById('error-container');
+      if (container) {
+        container.style.display = 'block';
+        container.innerHTML = '<h3 style="font-weight:bold;margin-bottom:8px;">⚠️ Preview Error</h3>' + (e.message || String(e));
+      }
+      try {
+        window.parent.postMessage({ type: 'preview-error', error: e.message || String(e) }, '*');
+      } catch (_err) {}
     }, true);
+
+    window.addEventListener('unhandledrejection', function(e) {
+      var spinner = document.getElementById('loading-spinner');
+      if (spinner) spinner.style.display = 'none';
+      var container = document.getElementById('error-container');
+      if (container) {
+        container.style.display = 'block';
+        container.innerHTML = '<h3 style="font-weight:bold;margin-bottom:8px;">⚠️ Promise Error</h3>' + (e.reason ? (e.reason.stack || e.reason) : e);
+      }
+    });
+
+    // Timeout failsafe: dismiss spinner after 8 seconds if hanging
+    setTimeout(function() {
+      var spinner = document.getElementById('loading-spinner');
+      if (spinner && spinner.style.display !== 'none') {
+        spinner.style.display = 'none';
+      }
+    }, 8000);
   </script>
 
   <style id="project-custom-css">
@@ -445,7 +474,7 @@ export function generateInstantPreviewHtml(files: Record<string, string>, curren
         const targetRoute = ${JSON.stringify(currentRoute || '/')};
         let routeEntryPath = null;
         if (targetRoute && targetRoute !== '/') {
-          const cleanRoute = targetRoute.replace(/^\/+/, '');
+          const cleanRoute = targetRoute.replace(/^\\/+/, '');
           const routeCandidates = [
             'app/' + cleanRoute + '/page.tsx',
             'app/' + cleanRoute + '/page.jsx',
