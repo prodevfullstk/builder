@@ -106,6 +106,7 @@ export async function POST(req: NextRequest) {
       } : undefined,
       currentFiles: files,
       activeFile,
+      mode, // FIXED: Now passing mode parameter to intent parser
     });
 
     const intentValidation = validateIntent(intent);

@@ -169,7 +169,7 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
     try {
       const response = await fetch('/api/agent', {
         method: 'POST',
-        headers: getClientAuthHeaders(),
+        headers: await getClientAuthHeaders(),
         body: JSON.stringify({
           message: aiPrompt.trim(),
           activeFile,
@@ -263,7 +263,7 @@ export function CodeEditor({ onRequestNewFile }: CodeEditorProps) {
       // No direct client mutation occurs before the server-authoritative commit succeeds
       const commitResponse = await fetch('/api/validate/candidate', {
         method: 'POST',
-        headers: getClientAuthHeaders(),
+        headers: await getClientAuthHeaders(),
         body: JSON.stringify({
           projectId: projectId || 'workspace',
           expectedRevision: baselineRevision,

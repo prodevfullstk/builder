@@ -434,10 +434,10 @@ if (typeof window !== 'undefined') {
 }
 
 /**
- * Centralized helper for client-side API requests.
- * Attaches verified Supabase Bearer token if the user is authenticated.
+ * Synchronous version of getClientAuthHeaders for backward compatibility (tests only).
+ * Does NOT perform automatic token refresh.
  */
-export function getClientAuthHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
+export function getClientAuthHeadersSync(extraHeaders: Record<string, string> = {}): Record<string, string> {
   const token = useAuthStore.getState().accessToken;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -447,5 +447,92 @@ export function getClientAuthHeaders(extraHeaders: Record<string, string> = {}):
     headers['Authorization'] = `Bearer ${token}`;
   }
   return headers;
+}
+
+/**
+ * Checks if current token is expired or will expire soon (within 5 minutes)
+ */
+function isTokenExpiringSoon(): boolean {
+  const state = useAuthStore.getState();
+  if (!state.expiresAt || !state.isAuthenticated) {
+    return false;
+  }
+  const fiveMinutes = 5 * 60 * 1000;
+  return Date.now() >= (state.expiresAt - fiveMinutes);
+}
+
+/**
+ * Centralized helper for client-side API requests.
+ * Attaches verified Supabase Bearer token if the user is authenticated.
+ * Automatically refreshes token if expired or expiring soon.
+ */
+export async function getClientAuthHeaders(extraHeaders: Record<string, string> = {}): Promise<Record<string, string>> {
+  // Check if token needs refresh
+  if (isTokenExpiringSoon()) {
+    const state = useAuthStore.getState();
+    if (state.refreshToken) {
+      console.log('[Auth] Token expiring soon, attempting refresh...');
+      const refreshed = await state.refreshSession();
+      if (!refreshed) {
+        console.warn('[Auth] Token refresh failed, user may need to re-login');
+      }
+    }
+  }
+
+  const token = useAuthStore.getState().accessToken;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...extraHeaders,
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+/**
+ * Background token refresh interval.
+ * Checks every 5 minutes if token needs refresh.
+ */
+let refreshIntervalId: NodeJS.Timeout | null = null;
+
+export function startTokenRefreshInterval(): void {
+  if (typeof window === 'undefined') return;
+  
+  // Clear existing interval if any
+  if (refreshIntervalId) {
+    clearInterval(refreshIntervalId);
+  }
+  
+  // Check every 5 minutes
+  refreshIntervalId = setInterval(async () => {
+    const state = useAuthStore.getState();
+    if (!state.isAuthenticated || !state.refreshToken) {
+      return;
+    }
+    
+    if (isTokenExpiringSoon()) {
+      console.log('[Auth] Background token refresh triggered');
+      const refreshed = await state.refreshSession();
+      if (!refreshed) {
+        console.warn('[Auth] Background token refresh failed');
+      }
+    }
+  }, 5 * 60 * 1000); // Every 5 minutes
+}
+
+export function stopTokenRefreshInterval(): void {
+  if (refreshIntervalId) {
+    clearInterval(refreshIntervalId);
+    refreshIntervalId = null;
+  }
+}
+
+// Start background refresh on module load (browser only)
+if (typeof window !== 'undefined') {
+  startTokenRefreshInterval();
+  
+  // Stop interval when page unloads
+  window.addEventListener('beforeunload', stopTokenRefreshInterval);
 }
 

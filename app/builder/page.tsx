@@ -172,7 +172,7 @@ function BuilderWorkspace() {
         try {
           const response = await fetch("/api/agent", {
             method: "POST",
-            headers: getClientAuthHeaders(),
+            headers: await getClientAuthHeaders(),
             body: JSON.stringify({
               message: initialPrompt,
               image: initialImage,

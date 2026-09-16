@@ -69,7 +69,7 @@ export function VercelPreview({
 
       const res = await fetch('/api/sandbox', {
         method: 'POST',
-        headers: getClientAuthHeaders(),
+        headers: await getClientAuthHeaders(),
         body: JSON.stringify({
           action: 'start',
           projectId,

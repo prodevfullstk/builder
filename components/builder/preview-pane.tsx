@@ -111,7 +111,7 @@ export function PreviewPane() {
     try {
       const res = await fetch('/api/agent', {
         method: 'POST',
-        headers: getClientAuthHeaders(),
+        headers: await getClientAuthHeaders(),
         body: JSON.stringify({
           mode: 'auto-fix',
           message: runtimeError,
@@ -179,7 +179,7 @@ export function PreviewPane() {
       try {
         const buildRes = await fetch('/api/validate/build', {
           method: 'POST',
-          headers: getClientAuthHeaders(),
+          headers: await getClientAuthHeaders(),
           body: JSON.stringify({
             projectId: projectId || 'workspace',
             framework,

@@ -14,6 +14,7 @@ export interface SemanticClassificationContext {
   currentFiles?: Record<string, string>;
   activeFile?: string;
   framework?: string;
+  mode?: 'build' | 'chat' | 'edit' | 'auto-fix'; // NEW: explicit mode
 }
 
 /**
@@ -116,7 +117,7 @@ const SEMANTIC_CONCEPT_PROJECTIONS: Array<{
 
   // --- PROJECT SCAFFOLDING / CREATION DOMAIN ---
   {
-    pattern: /(?:scaffold|from\s+scratch|landing\s+page|portfolio|saas\s+app|full\s+website|new\s+project|new\s+app|bookstore|dashboard|recipe|task\s+management|e-commerce|store|магазин|librería|boutique|তৈরি\s*করো|বানাও|নয়া|नया\s+प्रोजेक्ट|वेबसाइट\s+बनाएं|créer\s+un\s+site|nouveau\s+projet|crear\s+un\s+sitio|nuevo\s+proyecto|أنشئ\s+موقع|مشروع\s+جديد|新規プロジェクト|サイト作成|erstelle|baue|neue\s+webseite|создай\s+сайт|новый\s+проект|crea\s+un\s+sito|nuovo\s+progetto)/i,
+    pattern: /(?:scaffold|from\s+scratch|landing\s+page|portfolio|saas\s+app|full\s+website|new\s+project|new\s+app|bookstore|dashboard|recipe|task\s+management|e-commerce|store|магазин|librería|boutique|তৈরি(?:\s*(?:করুন|করো|করা|কর))?|বানান|বানাও|নয়া|নতুন\s+(?:ওয়েবসাইট|ওয়েবসাইট|প্রজেক্ট|অ্যাপ|সাইট)|পোর্টফোলিও(?:\s*(?:ওয়েবসাইট|ওয়েবসাইট))?|नया\s+प्रोजेक्ट|वेबसाइट\s+बनाएं|créer\s+un\s+site|nouveau\s+projet|crear\s+un\s+sitio|nuevo\s+proyecto|أنشئ\s+موقع|مشروع\s+جديد|新規プロジェクト|サイト作成|作成|erstelle|baue|neue\s+webseite|создай\s+сайт|новый\s+проект|crea\s+un\s+sito|nuovo\s+progetto)/i,
     weights: { create: 3.4 },
     factor: 1.0,
   },
@@ -137,13 +138,26 @@ function computeSemanticEnergies(text: string, context: SemanticClassificationCo
     question: 0.1,
     explain: 0.1,
     inspect: 0.1,
-    create: context.fileCount === 0 ? 1.5 : 0.1,
+    create: context.fileCount === 0 ? 0.6 : 0.1,
     addFeature: 0.2,
     modifyFeature: context.fileCount > 0 ? 0.3 : 0.1,
     fixBug: 0.1,
     refactor: 0.1,
     continueBuild: 0.05,
   };
+  
+  // Mode-aware energy adjustment
+  if (context.mode === 'chat') {
+    // Chat mode: strongly boost conversational intents, suppress mutating intents
+    energies.question = 2.0;
+    energies.explain = 2.0;
+    energies.create = 0.05;
+    energies.addFeature = 0.05;
+    energies.modifyFeature = 0.05;
+  } else if (context.mode === 'build' && context.fileCount === 0) {
+    // Build mode + empty project: moderate CREATE boost
+    energies.create = 1.2;
+  }
 
   for (const proj of SEMANTIC_CONCEPT_PROJECTIONS) {
     if (proj.pattern.test(text)) {

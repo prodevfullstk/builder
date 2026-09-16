@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { authenticateRequest } from '../lib/auth/server-auth';
-import { useAuthStore, getClientAuthHeaders } from '../lib/auth/supabase-auth';
+import { useAuthStore, getClientAuthHeadersSync as getClientAuthHeaders } from '../lib/auth/supabase-auth';
 
 describe('Server Authentication & Token Validation', () => {
   it('rejects requests with missing Authorization header', async () => {

@@ -1,5 +1,5 @@
 import { AcceptanceCriterion } from '../validation/acceptance-verifier';
-import { classifySemanticIntent } from './semantic-classifier';
+import { classifySemanticIntent, detectLanguageFromText } from './semantic-classifier';
 
 export type IntentAction =
   | 'CREATE_PROJECT'
@@ -135,6 +135,40 @@ export function validateIntent(intent: unknown): IntentValidationResult {
 }
 
 /**
+ * Pre-filter for obvious conversational or greeting intents.
+ * Prevents semantic classifier from over-analyzing simple greetings.
+ */
+function preFilterIntent(prompt: string): IntentAction | null {
+  const trimmed = prompt.trim().toLowerCase();
+  const wordCount = trimmed.split(/\s+/).length;
+  
+  // 1. Greeting detection (multilingual)
+  const greetingPattern = /^(?:hi|hello|hey|hola|hallo|salut|ciao|হাই|হ্যালো|नमस्ते|السلام|こんにちは|안녕)[\s!,.\?]*$/i;
+  if (greetingPattern.test(trimmed)) {
+    return 'QUESTION'; // Treat greetings as conversational
+  }
+  
+  // 2. Very short single-word inputs (likely conversational)
+  if (wordCount === 1 && trimmed.length < 10 && !/(?:bug|fix|create|add|modify|refactor)/i.test(trimmed)) {
+    return 'QUESTION';
+  }
+  
+  // 3. Obvious questions (starts with question word + short)
+  const questionStarts = /^(?:what|how|why|where|who|when|which|can\s+you|could\s+you|কী|কি|কেন|কিভাবে|क्या|क्यों|qué|cómo|pourquoi|comment|ماذا|كيف)/i;
+  if (questionStarts.test(trimmed) && wordCount <= 8) {
+    return 'QUESTION';
+  }
+  
+  // 4. Polite requests without technical verbs (likely explanation request)
+  const politePattern = /^(?:please|can\s+you|could\s+you|would\s+you|kindly|দয়া\s*করে|कृपया|s'il\s+vous\s+plaît|por\s+favor)/i;
+  if (politePattern.test(trimmed) && wordCount <= 6 && !/(?:build|create|add|make|implement)/i.test(trimmed)) {
+    return 'QUESTION';
+  }
+  
+  return null; // No pre-filter match, proceed to semantic classifier
+}
+
+/**
  * Parses natural-language prompt and context into a canonical IntentContract.
  * Uses language-agnostic semantic classification without hardcoded Bengali/English vocabulary lists.
  */
@@ -145,6 +179,7 @@ export function parseIntentFromPrompt(params: {
   imageContext?: ImageContext;
   currentFiles?: Record<string, string>;
   activeFile?: string;
+  mode?: 'build' | 'chat' | 'edit' | 'auto-fix'; // NEW: explicit mode parameter
 }): IntentContract {
   const {
     prompt,
@@ -153,14 +188,13 @@ export function parseIntentFromPrompt(params: {
     imageContext,
     currentFiles = {},
     activeFile,
+    mode, // NEW
   } = params;
 
   const trimmed = prompt.trim();
   const fileCount = Object.keys(currentFiles).length;
-  const id = 'intent_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6);
-  const timestamp = new Date().toISOString();
 
-  // Normalize framework
+  // Normalize framework before semantic classification
   let detectedFramework = (framework || 'nextjs').toLowerCase();
   if (currentFiles['astro.config.mjs'] || currentFiles['astro.config.ts']) {
     detectedFramework = 'astro';
@@ -182,18 +216,38 @@ export function parseIntentFromPrompt(params: {
   // Detect explicit version if mentioned (e.g. Next.js 15, Vite 5, React 19)
   const verMatch = prompt.match(/(?:next\.?js|vite|react|astro)\s*(?:v(?:ersion)?)?\s*(\d+(?:\.\d+)?)/i);
   const frameworkVersion = verMatch ? verMatch[1] : undefined;
+  
+  // Apply pre-filter for obvious conversational intents
+  const preFilterResult = preFilterIntent(trimmed);
+  let action: IntentAction;
+  let semanticResult;
+  
+  if (preFilterResult) {
+    // Pre-filter matched - use it directly
+    action = preFilterResult;
+    semanticResult = {
+      action: preFilterResult,
+      language: detectLanguageFromText(trimmed),
+      confidence: 0.92, // High confidence for pre-filtered greetings
+      mutating: false,
+      reasoning: 'Pre-filter matched conversational/greeting pattern',
+    };
+  } else {
+    // No pre-filter match - proceed to semantic classifier
+    const isImageTask = Boolean(hasImage || (imageContext && imageContext.hasImage));
+    semanticResult = classifySemanticIntent(trimmed, {
+      fileCount,
+      hasImage: isImageTask,
+      currentFiles,
+      activeFile,
+      framework: detectedFramework,
+      mode, // Pass mode to semantic classifier
+    });
+    action = semanticResult.action;
+  }
+  const id = 'intent_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6);
+  const timestamp = new Date().toISOString();
 
-  // Language agnostic semantic action classification via authoritative semantic classifier (Gate D)
-  const isImageTask = Boolean(hasImage || (imageContext && imageContext.hasImage));
-  const semanticResult = classifySemanticIntent(trimmed, {
-    fileCount,
-    hasImage: isImageTask,
-    currentFiles,
-    activeFile,
-    framework: detectedFramework,
-  });
-
-  const action: IntentAction = semanticResult.action;
   const detectedLanguage = semanticResult.language;
   const dynamicConfidence = semanticResult.confidence;
 
