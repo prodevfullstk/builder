@@ -63,35 +63,65 @@ export function parseStructuredOutput(text: string): {
     return { files: null, parseError: false, status: 'unsupported' };
   }
 
-  const rawBlock = filesBlockMatch[1].trim();
+  let rawBlock = filesBlockMatch[1].trim();
+
+  // 1. Strip markdown fences if AI wrapped content in ```json ... ``` inside <FILES>
+  if (rawBlock.startsWith('```')) {
+    rawBlock = rawBlock.replace(/^```[a-zA-Z]*\n?/, '').replace(/```\s*$/, '').trim();
+  }
+
+  // 2. Extract strictly from the outermost JSON object braces { ... }
+  const firstBrace = rawBlock.indexOf('{');
+  const lastBrace = rawBlock.lastIndexOf('}');
+  const boundedJson = (firstBrace !== -1 && lastBrace > firstBrace)
+    ? rawBlock.slice(firstBrace, lastBrace + 1)
+    : rawBlock;
 
   const tryParse = (src: string): Record<string, string> | null => {
-    const json = JSON.parse(src);
-    if (!json.files || !Array.isArray(json.files)) return null;
-    const files: Record<string, string> = {};
-    for (const item of json.files) {
-      if (item.path && typeof item.content === 'string') {
-        files[item.path.replace(/^\/+/, '')] = item.content;
+    try {
+      const json = JSON.parse(src);
+      if (!json.files || !Array.isArray(json.files)) return null;
+      const files: Record<string, string> = {};
+      for (const item of json.files) {
+        if (item.path && typeof item.content === 'string') {
+          files[item.path.replace(/^\/+/, '')] = item.content;
+        }
       }
+      return Object.keys(files).length > 0 ? files : null;
+    } catch {
+      return null;
     }
-    return Object.keys(files).length > 0 ? files : null;
   };
 
-  // Attempt 1: direct parse
-  try {
-    const res = tryParse(rawBlock);
-    if (res) return { files: res, parseError: false, status: 'parsed' };
-  } catch { /* fall through */ }
+  // Attempt 1: direct parse of bounded json
+  let res = tryParse(boundedJson);
+  if (res) return { files: res, parseError: false, status: 'parsed' };
 
-  // Attempt 2: sanitize then parse
+  // Attempt 2: sanitize then parse bounded json
+  res = tryParse(sanitizeFilesJSON(boundedJson));
+  if (res) {
+    return { files: res, parseError: false, status: 'parsed' };
+  }
+
+  // Attempt 3: Regex item-by-item extraction fallback if full JSON has minor trailing syntax issue
   try {
-    const files = tryParse(sanitizeFilesJSON(rawBlock));
-    if (files) {
-      console.warn('[Parser] <FILES> JSON required sanitization');
-      return { files, parseError: false, status: 'parsed' };
+    const itemRegex = /\{\s*"path"\s*:\s*"([^"]+)"\s*,\s*"content"\s*:\s*"((?:\\.|[^"\\])*)"\s*\}/g;
+    let match: RegExpExecArray | null;
+    const fallbackFiles: Record<string, string> = {};
+    while ((match = itemRegex.exec(boundedJson)) !== null) {
+      const path = match[1].replace(/^\/+/, '');
+      try {
+        const content = JSON.parse(`"${match[2]}"`);
+        fallbackFiles[path] = content;
+      } catch {
+        fallbackFiles[path] = match[2].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+      }
     }
-  } catch (e2) {
-    console.error('[Parser] <FILES> JSON parse failed after sanitization:', String(e2).slice(0, 200));
+    if (Object.keys(fallbackFiles).length > 0) {
+      return { files: fallbackFiles, parseError: false, status: 'parsed' };
+    }
+  } catch (e3) {
+    console.error('[Parser] <FILES> regex fallback failed:', String(e3).slice(0, 200));
   }
 
   return { files: null, parseError: true, status: 'malformed' };
