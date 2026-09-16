@@ -237,7 +237,7 @@ Apply the requested changes. Output modified/new files via standard code blocks 
 
     if (useOrchestration) {
       // Use NEW orchestrated execution path
-      console.log(`[Orchestrator] Using orchestrated strategy for ${intent.action} (${orchestrationDecision.subtaskCount} subtasks)`);
+      console.log(`[🧠 Orchestrator] Using orchestrated strategy for ${intent.action} (${orchestrationDecision.subtaskCount} subtasks)`);
       
       const startTime = Date.now();
       const orchestrationStream = orchestrateRequest({
@@ -251,24 +251,219 @@ Apply the requested changes. Output modified/new files via standard code blocks 
         userPrompt: userContent,
       });
 
-      // Convert orchestration events to SSE format
+      // ⚠️ CRITICAL FIX: Transform orchestration events to STANDARD stream events
+      // The client expects standard SSE events (text_delta, file_start, file_complete)
+      // NOT raw orchestration events (orchestration_start, plan_generated, subtask_complete)
       const encoder = new TextEncoder();
+      let sequenceId = 0;
+      
       const transformedStream = new ReadableStream({
         async start(controller) {
           try {
-            for await (const event of orchestrationStream) {
-              const sseData = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
-              controller.enqueue(encoder.encode(sseData));
+            // Emit standard start event
+            const startEvent = {
+              type: 'start',
+              sequenceId: ++sequenceId,
+              timestamp: new Date().toISOString(),
+              messageId: runId,
+              role: 'assistant',
+            };
+            controller.enqueue(encoder.encode(`event: start\ndata: ${JSON.stringify(startEvent)}\n\n`));
+            
+            // Emit intent event
+            const intentEvent = {
+              type: 'intent',
+              sequenceId: ++sequenceId,
+              timestamp: new Date().toISOString(),
+              intent,
+            };
+            controller.enqueue(encoder.encode(`event: intent\ndata: ${JSON.stringify(intentEvent)}\n\n`));
+            
+            let planEmitted = false;
+            const filesGenerated = new Set<string>();
+            
+            for await (const orchEvent of orchestrationStream) {
+              console.log(`[🧠 Orchestrator Event] ${orchEvent.type}:`, orchEvent.data);
+              
+              // Transform orchestration events to standard stream events
+              if (orchEvent.type === 'orchestration_start') {
+                // Emit plan event with orchestration info
+                const planEvent = {
+                  type: 'plan',
+                  sequenceId: ++sequenceId,
+                  timestamp: new Date().toISOString(),
+                  steps: orchEvent.data?.plan?.subtasks?.map((s: any) => s.description || s) || ['Planning multi-step execution'],
+                  milestones: orchEvent.data?.plan?.subtasks?.map((s: any, idx: number) => ({
+                    id: `milestone-${idx + 1}`,
+                    title: s.description || s,
+                    status: 'pending',
+                  })) || [],
+                  estimatedFiles: orchEvent.data?.plan?.targetFiles || [],
+                };
+                controller.enqueue(encoder.encode(`event: plan\ndata: ${JSON.stringify(planEvent)}\n\n`));
+                planEmitted = true;
+              } else if (orchEvent.type === 'plan_generated' && !planEmitted) {
+                // Emit plan event from plan_generated
+                const subtasks = orchEvent.data?.plan?.subtasks || [];
+                const planEvent = {
+                  type: 'plan',
+                  sequenceId: ++sequenceId,
+                  timestamp: new Date().toISOString(),
+                  steps: subtasks.map((s: any) => s.description || 'Execute subtask'),
+                  milestones: subtasks.map((s: any, idx: number) => ({
+                    id: s.id || `milestone-${idx + 1}`,
+                    title: s.description,
+                    status: 'pending',
+                  })),
+                  estimatedFiles: subtasks.flatMap((s: any) => s.targetFiles || []),
+                };
+                controller.enqueue(encoder.encode(`event: plan\ndata: ${JSON.stringify(planEvent)}\n\n`));
+                planEmitted = true;
+              } else if (orchEvent.type === 'subtask_start') {
+                // Emit plan_step_start for subtask
+                const stepEvent = {
+                  type: 'plan_step_start',
+                  sequenceId: ++sequenceId,
+                  timestamp: new Date().toISOString(),
+                  stepId: orchEvent.data?.subtaskId || 'step-' + sequenceId,
+                  title: orchEvent.data?.description || 'Executing subtask',
+                };
+                controller.enqueue(encoder.encode(`event: plan_step_start\ndata: ${JSON.stringify(stepEvent)}\n\n`));
+              } else if (orchEvent.type === 'subtask_complete') {
+                // Emit file events for completed subtask
+                const files = orchEvent.data?.files || {};
+                for (const [path, content] of Object.entries(files)) {
+                  if (!filesGenerated.has(path)) {
+                    filesGenerated.add(path);
+                    
+                    // file_start
+                    controller.enqueue(encoder.encode(`event: file_start\ndata: ${JSON.stringify({
+                      type: 'file_start',
+                      sequenceId: ++sequenceId,
+                      timestamp: new Date().toISOString(),
+                      path,
+                      operation: 'create',
+                    })}\n\n`));
+                    
+                    // file_delta (send content in chunks for streaming effect)
+                    const contentStr = String(content);
+                    const chunkSize = 500;
+                    for (let i = 0; i < contentStr.length; i += chunkSize) {
+                      const chunk = contentStr.slice(i, i + chunkSize);
+                      controller.enqueue(encoder.encode(`event: file_delta\ndata: ${JSON.stringify({
+                        type: 'file_delta',
+                        sequenceId: ++sequenceId,
+                        timestamp: new Date().toISOString(),
+                        path,
+                        delta: chunk,
+                      })}\n\n`));
+                    }
+                    
+                    // file_complete
+                    controller.enqueue(encoder.encode(`event: file_complete\ndata: ${JSON.stringify({
+                      type: 'file_complete',
+                      sequenceId: ++sequenceId,
+                      timestamp: new Date().toISOString(),
+                      path,
+                      sizeBytes: contentStr.length,
+                      hash: '',
+                    })}\n\n`));
+                  }
+                }
+                
+                // Emit plan_step_complete
+                controller.enqueue(encoder.encode(`event: plan_step_complete\ndata: ${JSON.stringify({
+                  type: 'plan_step_complete',
+                  sequenceId: ++sequenceId,
+                  timestamp: new Date().toISOString(),
+                  stepId: orchEvent.data?.subtaskId || 'step-' + sequenceId,
+                  summary: `Completed: ${orchEvent.data?.filesModified || 0} files modified`,
+                })}\n\n`));
+              } else if (orchEvent.type === 'text_delta') {
+                // Pass through text_delta directly
+                controller.enqueue(encoder.encode(`event: text_delta\ndata: ${JSON.stringify({
+                  type: 'text_delta',
+                  sequenceId: ++sequenceId,
+                  timestamp: new Date().toISOString(),
+                  delta: orchEvent.data?.delta || '',
+                })}\n\n`));
+              } else if (orchEvent.type === 'orchestration_complete') {
+                // Emit final files and complete event
+                const finalFiles = orchEvent.data?.files || {};
+                
+                // Emit any remaining files not yet sent
+                for (const [path, content] of Object.entries(finalFiles)) {
+                  if (!filesGenerated.has(path)) {
+                    filesGenerated.add(path);
+                    
+                    controller.enqueue(encoder.encode(`event: file_start\ndata: ${JSON.stringify({
+                      type: 'file_start',
+                      sequenceId: ++sequenceId,
+                      timestamp: new Date().toISOString(),
+                      path,
+                      operation: 'create',
+                    })}\n\n`));
+                    
+                    const contentStr = String(content);
+                    controller.enqueue(encoder.encode(`event: file_delta\ndata: ${JSON.stringify({
+                      type: 'file_delta',
+                      sequenceId: ++sequenceId,
+                      timestamp: new Date().toISOString(),
+                      path,
+                      delta: contentStr,
+                    })}\n\n`));
+                    
+                    controller.enqueue(encoder.encode(`event: file_complete\ndata: ${JSON.stringify({
+                      type: 'file_complete',
+                      sequenceId: ++sequenceId,
+                      timestamp: new Date().toISOString(),
+                      path,
+                      sizeBytes: contentStr.length,
+                      hash: '',
+                    })}\n\n`));
+                  }
+                }
+                
+                // Emit complete event
+                const completeEvent = {
+                  type: 'complete',
+                  sequenceId: ++sequenceId,
+                  timestamp: new Date().toISOString(),
+                  totalDurationMs: orchEvent.data?.totalDurationMs || (Date.now() - startTime),
+                  committed: true,
+                };
+                controller.enqueue(encoder.encode(`event: complete\ndata: ${JSON.stringify(completeEvent)}\n\n`));
+              } else if (orchEvent.type === 'orchestration_error' || orchEvent.type === 'subtask_error') {
+                // Emit error event
+                const errorEvent = {
+                  type: 'error',
+                  sequenceId: ++sequenceId,
+                  timestamp: new Date().toISOString(),
+                  code: 'ORCHESTRATION_ERROR',
+                  message: orchEvent.data?.error || 'Orchestration error occurred',
+                  fatal: false,
+                };
+                controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify(errorEvent)}\n\n`));
+              }
             }
+            
             controller.close();
             
             // Track usage
             const duration = Date.now() - startTime;
             trackOrchestrationUsage('orchestrated', orchestrationDecision.subtaskCount || 0, duration);
-          } catch (error) {
-            console.error('[Orchestrator] Error:', error);
-            const errorEvent = `event: error\ndata: ${JSON.stringify({ type: 'error', message: String(error) })}\n\n`;
-            controller.enqueue(encoder.encode(errorEvent));
+            console.log(`[🧠 Orchestrator] Completed in ${duration}ms with ${filesGenerated.size} files generated`);
+          } catch (error: any) {
+            console.error('[🧠 Orchestrator] Error:', error);
+            const errorEvent = {
+              type: 'error',
+              sequenceId: ++sequenceId,
+              timestamp: new Date().toISOString(),
+              code: 'ORCHESTRATION_FATAL',
+              message: error?.message || String(error),
+              fatal: true,
+            };
+            controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify(errorEvent)}\n\n`));
             controller.close();
           }
         },

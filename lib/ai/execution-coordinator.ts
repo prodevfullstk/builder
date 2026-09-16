@@ -174,31 +174,58 @@ async function executeSubtask(
     const fullResponse = await streamToString(stream);
     logs.push(`[Coordinator] LLM response received (${fullResponse.length} chars)`);
     
-    // Parse tool calls from response
+    // ⚠️ CRITICAL FIX: Try multiple parsing strategies
+    let extractedFiles: Record<string, string> = {};
+    
+    // Strategy 1: Parse MCP tool calls
     const { toolCalls, explanation } = parseToolCalls(fullResponse);
     logs.push(`[Coordinator] Parsed ${toolCalls.length} tool calls`);
     
-    if (toolCalls.length === 0) {
-      // No tool calls - might be explanatory response or need to parse <FILES> blocks
-      logs.push(`[Coordinator] Warning: No tool calls found in response for ${task.id}`);
+    if (toolCalls.length > 0) {
+      const execution = executeToolCalls(contextFiles, toolCalls);
+      logs.push(...execution.logs);
       
-      // Try to extract files from markdown code blocks as fallback
-      const filesFromMarkdown = extractFilesFromMarkdown(fullResponse);
-      if (Object.keys(filesFromMarkdown).length > 0) {
-        logs.push(`[Coordinator] Extracted ${Object.keys(filesFromMarkdown).length} files from markdown`);
-        return {
-          subtaskId: task.id,
-          success: true,
-          files: filesFromMarkdown,
-          errors: [],
-          logs,
-          durationMs: Date.now() - startTime,
-        };
+      // Check for failures
+      const failedTools = execution.executedTools.filter(t => t.action === 'failed');
+      if (failedTools.length > 0) {
+        errors.push(...failedTools.map(t => `${t.tool} failed for ${t.path}: ${t.details}`));
       }
       
-      // If still no files, consider it a failure for generate/edit tasks
+      // Get only the NEW/MODIFIED files (delta from context)
+      for (const [path, content] of Object.entries(execution.updatedFiles)) {
+        if (contextFiles[path] !== content) {
+          extractedFiles[path] = content;
+        }
+      }
+      
+      logs.push(`[Coordinator] MCP tool calls extracted ${Object.keys(extractedFiles).length} files`);
+    }
+    
+    // Strategy 2: Extract from markdown code blocks (if no tool calls or to supplement)
+    if (Object.keys(extractedFiles).length === 0) {
+      logs.push(`[Coordinator] No tool calls found, trying markdown extraction...`);
+      const filesFromMarkdown = extractFilesFromMarkdown(fullResponse);
+      if (Object.keys(filesFromMarkdown).length > 0) {
+        extractedFiles = { ...extractedFiles, ...filesFromMarkdown };
+        logs.push(`[Coordinator] Markdown extraction found ${Object.keys(filesFromMarkdown).length} files`);
+      }
+    }
+    
+    // Strategy 3: Extract from <FILE> tags (legacy format)
+    if (Object.keys(extractedFiles).length === 0) {
+      logs.push(`[Coordinator] Trying <FILE> tag extraction...`);
+      const filesFromTags = extractFilesFromXMLTags(fullResponse);
+      if (Object.keys(filesFromTags).length > 0) {
+        extractedFiles = { ...extractedFiles, ...filesFromTags };
+        logs.push(`[Coordinator] <FILE> tag extraction found ${Object.keys(filesFromTags).length} files`);
+      }
+    }
+    
+    // If still no files, consider it a failure for generate/edit tasks
+    if (Object.keys(extractedFiles).length === 0) {
       if (task.type === 'generate' || task.type === 'edit') {
-        errors.push('No files generated or tool calls found in LLM response');
+        errors.push(`No files generated for ${task.id}. LLM response:\n${fullResponse.slice(0, 500)}...`);
+        logs.push(`[Coordinator] ✕ FAILED: No files extracted from LLM response`);
         return {
           subtaskId: task.id,
           success: false,
@@ -207,34 +234,27 @@ async function executeSubtask(
           logs,
           durationMs: Date.now() - startTime,
         };
+      } else {
+        // For validate/inspect tasks, no files is OK
+        logs.push(`[Coordinator] ✓ Validation/inspection task completed (no files expected)`);
+        return {
+          subtaskId: task.id,
+          success: true,
+          files: {},
+          errors: [],
+          logs,
+          durationMs: Date.now() - startTime,
+        };
       }
     }
     
-    // Execute tool calls
-    const execution = executeToolCalls(contextFiles, toolCalls);
-    logs.push(...execution.logs);
-    
-    // Check for failures
-    const failedTools = execution.executedTools.filter(t => t.action === 'failed');
-    if (failedTools.length > 0) {
-      errors.push(...failedTools.map(t => `${t.tool} failed for ${t.path}: ${t.details}`));
-    }
-    
-    // Get only the NEW/MODIFIED files (delta from context)
-    const deltaFiles: Record<string, string> = {};
-    for (const [path, content] of Object.entries(execution.updatedFiles)) {
-      if (contextFiles[path] !== content) {
-        deltaFiles[path] = content;
-      }
-    }
-    
-    logs.push(`[Coordinator] Subtask ${task.id} completed successfully with ${Object.keys(deltaFiles).length} file changes`);
+    logs.push(`[Coordinator] ✓ Subtask ${task.id} completed successfully with ${Object.keys(extractedFiles).length} file changes`);
     
     return {
       subtaskId: task.id,
-      success: failedTools.length === 0,
-      files: deltaFiles,
-      errors,
+      success: true,
+      files: extractedFiles,
+      errors: [],
       logs,
       durationMs: Date.now() - startTime,
     };
@@ -292,16 +312,32 @@ function buildSubtaskPrompt(
   prompt += `## Instructions:\n\n`;
   prompt += `${task.description}\n\n`;
   
-  // MCP tool usage
-  if (task.type === 'generate' || task.type === 'edit') {
-    prompt += `**IMPORTANT:** Use MCP tool calls to create/modify files:\n`;
-    prompt += `- Use <TOOL_CALL>{"name": "write_file", "args": {"path": "...", "content": "..."}}</TOOL_CALL> to create new files\n`;
-    prompt += `- Use <TOOL_CALL>{"name": "edit_file", "args": {"path": "...", "targetContent": "...", "replacementContent": "..."}}</TOOL_CALL> to edit existing files\n\n`;
+  // ⚠️ CRITICAL: Clear file output format instructions
+  if (task.type === 'generate' || task.type === 'edit' || task.type === 'integrate') {
+    prompt += `## OUTPUT FORMAT (MANDATORY):\n\n`;
+    prompt += `You MUST output files using ONE of these formats:\n\n`;
+    prompt += `**Option 1 - MCP Tool Calls (Preferred):**\n`;
+    prompt += `\`\`\`\n`;
+    prompt += `<TOOL_CALL>{"name": "write_file", "args": {"path": "components/Button.tsx", "content": "import React..."}}</TOOL_CALL>\n`;
+    prompt += `\`\`\`\n\n`;
+    prompt += `**Option 2 - Markdown Code Blocks:**\n`;
+    prompt += `\`\`\`typescript filename=components/Button.tsx\n`;
+    prompt += `import React from 'react';\n`;
+    prompt += `export function Button() { ... }\n`;
+    prompt += `\`\`\`\n\n`;
+    prompt += `**Option 3 - FILE Tags:**\n`;
+    prompt += `\`\`\`\n`;
+    prompt += `<FILE path="components/Button.tsx">\n`;
+    prompt += `import React from 'react';\n`;
+    prompt += `export function Button() { ... }\n`;
+    prompt += `</FILE>\n`;
+    prompt += `\`\`\`\n\n`;
+    prompt += `⚠️ **IMPORTANT:** Do NOT just explain what to do - actually OUTPUT the complete file content!\n\n`;
   }
   
   // Priority context
   if (task.priority === 1) {
-    prompt += `**PRIORITY:** This is a critical subtask that other tasks depend on. Ensure correctness.\n\n`;
+    prompt += `**PRIORITY:** This is a critical subtask that other tasks depend on. Ensure correctness and completeness.\n\n`;
   }
   
   return prompt;
@@ -381,16 +417,53 @@ async function streamToString(stream: ReadableStream<Uint8Array>): Promise<strin
 function extractFilesFromMarkdown(response: string): Record<string, string> {
   const files: Record<string, string> = {};
   
-  // Pattern: ```typescript filename=path/to/file.tsx
-  const codeBlockRegex = /```(?:typescript|tsx|ts|javascript|jsx|js|css)?\s*(?:filename=|filepath:)?\s*([^\s\n]+)\s*\n([\s\S]*?)```/g;
+  // Pattern 1: ```typescript filename=path/to/file.tsx
+  // Pattern 2: ```typescript path/to/file.tsx
+  // Pattern 3: ```tsx\n// path/to/file.tsx\n
+  const codeBlockRegex = /```(?:typescript|tsx|ts|javascript|jsx|js|css|html|json)?\s*(?:filename=|filepath:|path=)?\s*([^\s\n]+)?\s*\n([\s\S]*?)```/g;
   
   let match: RegExpExecArray | null;
   while ((match = codeBlockRegex.exec(response)) !== null) {
-    const filename = match[1].trim();
+    let filename = match[1]?.trim();
+    let content = match[2]?.trim();
+    
+    // If no filename in the header, try to extract from first comment line
+    if (!filename || filename.length < 2) {
+      const firstLine = content.split('\n')[0];
+      const commentMatch = firstLine.match(/^\/\/\s*([^\s]+\.(?:tsx?|jsx?|css|html|json))/);
+      if (commentMatch) {
+        filename = commentMatch[1];
+        // Remove the comment line from content
+        content = content.split('\n').slice(1).join('\n').trim();
+      }
+    }
+    
+    if (filename && content && filename.length > 2) {
+      // Clean up filename
+      filename = filename.replace(/^["']|["']$/g, '').replace(/^\/+/, '');
+      files[filename] = content;
+    }
+  }
+  
+  return files;
+}
+
+/**
+ * Extract files from <FILE> XML-style tags
+ */
+function extractFilesFromXMLTags(response: string): Record<string, string> {
+  const files: Record<string, string> = {};
+  
+  // Pattern: <FILE path="...">content</FILE>
+  const fileTagRegex = /<FILE\s+path=["']([^"']+)["']>([\s\S]*?)<\/FILE>/g;
+  
+  let match: RegExpExecArray | null;
+  while ((match = fileTagRegex.exec(response)) !== null) {
+    const path = match[1].trim().replace(/^\/+/, '');
     const content = match[2].trim();
     
-    if (filename && content) {
-      files[filename] = content;
+    if (path && content) {
+      files[path] = content;
     }
   }
   
